@@ -144,7 +144,7 @@ export default function RegisterPage() {
     <WalletRequired>
       <div className="container mx-auto px-4 py-8 sm:py-12 max-w-4xl">
         <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-2">Join TruthChain</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold mb-2">Join Vertify</h1>
           <p className="text-sm sm:text-base text-gray-600">
             Become a fact-checker and earn rewards for accuracy
           </p>

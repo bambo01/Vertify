@@ -1,4 +1,4 @@
-import { geminiFactCheck } from '../gemini-api.js';
+import { geminiFactCheck } from '../gemini-api.ts';
 
 export async function verifyClaimWithAI(claim) {
   try {

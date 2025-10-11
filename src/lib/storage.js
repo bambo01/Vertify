@@ -10,7 +10,7 @@ const USERS_KEY = "truthchain_users";
 // Set to true for offline development with localStorage
 // NOTE: Backend requires MongoDB running on localhost:27017 and server running on port 5000
 // To use backend: Start MongoDB, run 'npm run server:dev', then set USE_LOCALSTORAGE = false
-const USE_LOCALSTORAGE = true;
+const USE_LOCALSTORAGE = false;
 
 /** Normalize arbitrary shapes into a flat array of users */
 function normalizeUsers(u) {
