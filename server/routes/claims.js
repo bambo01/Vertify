@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Claim = require('../models/Claim');
+const Claim = require('../models/Claims');
 
 // @route   GET /api/claims
 // @desc    Get all claims

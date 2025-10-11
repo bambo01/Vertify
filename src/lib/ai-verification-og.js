@@ -1,4 +1,4 @@
-import { geminiFactCheck } from '../gemini-api.js';
+import { perplexityFactCheck } from '../perplexity-api';
 
 export async function verifyClaimWithAI(claim) {
   try {
@@ -11,15 +11,15 @@ Please analyze this claim and provide:
 1. A verdict (True/False/Uncertain)
 2. Confidence level (0-100%)
 3. Detailed reasoning
-4. Sources used for verification (list URLs or publication names at the end)`;
+4. Sources used for verification`;
 
-    const response = await geminiFactCheck(query, {
+    const response = await perplexityFactCheck(query, {
       temperature: 0.1,
       max_tokens: 2000,
     });
 
     const answer = response.answer.toLowerCase();
-
+    
     let result = 'Uncertain';
     let confidence = 50;
 
