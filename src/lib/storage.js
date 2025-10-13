@@ -290,23 +290,21 @@ export const storage = {
     }
 
     try {
-      const backendUser = await apiClient.getUser(address);
-      // Normalize backend data to frontend format
-      if (backendUser && backendUser.walletAddress) {
-        return {
-          ...backendUser,
-          address: backendUser.walletAddress,
-          displayName:
-            backendUser.displayName ||
-            backendUser.walletAddress.slice(0, 6),
-          categories: backendUser.badges?.map((b) => b.category) || [],
-        };
-      }
-      return backendUser;
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-      return null;
+    const backendUser = await apiClient.getUser(address.toLowerCase());
+    if (backendUser?.walletAddress) {
+      return {
+        ...backendUser,
+        address: backendUser.walletAddress,
+        displayName: backendUser.displayName || backendUser.walletAddress.slice(0, 6),
+        categories: backendUser.badges?.map(b => b.category) || [],
+      };
     }
+    return backendUser;
+  } catch (err) {
+    if (err.status === 404) return null; // not an error; just not created yet
+    console.error("Error fetching user profile:", err);
+    return null;
+  }
   },
 
   async saveUserProfile(profile) {
@@ -341,6 +339,7 @@ export const storage = {
         roleHash: profile.roleHash,
         geoHash: profile.geoHash,
       };
+      
       const savedProfile = await apiClient.register(backendProfile);
       // Normalize backend response to frontend format
       return {

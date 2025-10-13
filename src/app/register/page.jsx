@@ -120,6 +120,7 @@ export default function RegisterPage() {
     };
 
     try {
+      console.log('My Profile: ', profile);
       await storage.saveUserProfile(profile);
       toast.success('Registration complete! Welcome to TruthChain 🎉');
       router.push('/dashboard');

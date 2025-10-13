@@ -14,6 +14,11 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { TrendingUp, FileText, Vote as VoteIcon, Award, Target, Zap } from 'lucide-react';
 
+import Link from 'next/link';
+import { Button } from '../../components/ui/button';
+import { usePathname } from 'next/navigation';
+import { Plus } from 'lucide-react';
+
 export default function DashboardPage() {
   const { address } = useAccount();
   const router = useRouter();
@@ -24,6 +29,10 @@ export default function DashboardPage() {
   const [correctVotes, setCorrectVotes] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [voteClaims, setVoteClaims] = useState({});
+
+   const pathname = usePathname();
+  
+    const isActive = (path) => pathname === path;
 
   useEffect(() => {
     setIsClient(true);
@@ -137,9 +146,19 @@ export default function DashboardPage() {
   return (
     <WalletRequired>
       <div className="container mx-auto px-4 py-12">
-        <div className="mb-8">
+        <div className='flex justify-between'>
+          <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">{profile.displayName}&apos;s Dashboard</h1>
           <p className="text-gray-600">Track your fact-checking performance and earn badges</p>
+        </div>
+          <Link href="/submit">
+              <Button
+                className="gap-2 bg-blue-600"
+              >
+                <Plus className="h-4 w-4" />
+                Submit Claim
+              </Button>
+            </Link>
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

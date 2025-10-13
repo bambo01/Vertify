@@ -10,6 +10,8 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-black text-white hover:bg-black/90",
+        navbar:
+          "bg-blue-600 text-white hover:bg-gray-100 border border-gray-200",
         secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
         outline: "border border-gray-200 bg-white hover:bg-gray-50",
         ghost: "hover:bg-gray-100",

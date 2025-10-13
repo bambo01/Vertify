@@ -28,7 +28,7 @@ export default function RootLayout({
 }
 
 export const metadata = {
-  title: "TruthChain Verify",
+  title: "Verify",
   description:
     "Anchor and verify community fact-checks on-chain, rewarding accuracy while curbing misinformation spread. Stake, vote, and earn on trusted, transparent outcomes.",
   other: {
@@ -40,7 +40,7 @@ export const metadata = {
         title: "Open with Ohara",
         action: {
           type: "launch_frame",
-          name: "TruthChain Verify",
+          name: "Verify",
           url: "https://food-hidden-841.app.ohara.ai",
           splashImageUrl:
             "https://usdozf7pplhxfvrl.public.blob.vercel-storage.com/farcaster/splash_images/splash_image1.svg",

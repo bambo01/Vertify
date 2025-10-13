@@ -11,29 +11,24 @@ class ApiClient {
   }
 
   async request(endpoint, options = {}) {
-    const url = `${this.baseURL}${endpoint}`;
-    const config = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    };
+  const url = `${this.baseURL}${endpoint}`;
+  const config = {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  };
 
-    try {
-      const response = await fetch(url, config);
-      const data = await response.json();
+  const res = await fetch(url, config);
+  let data = null;
+  try { data = await res.json(); } catch { /* no body */ }
 
-      if (!response.ok) {
-        throw new Error(data.error || 'API request failed');
-      }
-
-      return data;
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
-    }
+  if (!res.ok) {
+    const err = new Error(data?.error || res.statusText || 'API request failed');
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
+  return data;
+}
 
   // Auth endpoints
   async login(walletAddress, signature, message) {

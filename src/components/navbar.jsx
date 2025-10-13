@@ -25,7 +25,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-2">
             <Link href="/">
               <Button
-                variant={isActive('/') ? 'default' : 'ghost'}
+                variant={isActive('/') ? 'navbar' : 'ghost'}
                 className="gap-2"
               >
                 <Home className="h-4 w-4" />
@@ -34,14 +34,14 @@ export function Navbar() {
             </Link>
             <Link href="/explore">
               <Button
-                variant={isActive('/explore') ? 'default' : 'ghost'}
+                variant={isActive('/explore') ? 'navbar' : 'ghost'}
                 className="gap-2"
               >
                 <Search className="h-4 w-4" />
                 Explore
               </Button>
             </Link>
-            <Link href="/submit">
+            {/*<Link href="/submit">
               <Button
                 variant={isActive('/submit') ? 'default' : 'ghost'}
                 className="gap-2"
@@ -49,10 +49,10 @@ export function Navbar() {
                 <Plus className="h-4 w-4" />
                 Submit
               </Button>
-            </Link>
+            </Link>*/}
             <Link href="/dashboard">
               <Button
-                variant={isActive('/dashboard') ? 'default' : 'ghost'}
+                variant={isActive('/dashboard') ? 'navbar' : 'ghost'}
                 className="gap-2"
               >
                 <User className="h-4 w-4" />
