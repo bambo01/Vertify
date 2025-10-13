@@ -1,53 +1,74 @@
 'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_ORIGIN || 'http://localhost:5000/api';
-
 /**
  * API Client for TruthChain Backend
+ * - Uses NEXT_PUBLIC_API_ORIGIN if set; otherwise defaults to /api (recommended with Next.js rewrite)
  */
+const API_URL = (process.env.NEXT_PUBLIC_API_ORIGIN || '/api').replace(/\/$/, '');
+
+const toAddr = (a) => String(a || '').toLowerCase().trim();
+
 class ApiClient {
-  constructor() {
-    this.baseURL = API_URL;
+  constructor(baseURL = API_URL) {
+    this.baseURL = baseURL;
   }
 
   async request(endpoint, options = {}) {
-  const url = `${this.baseURL}${endpoint}`;
-  const config = {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  };
+    const url = `${this.baseURL}${endpoint}`;
+    const config = {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+    };
 
-  const res = await fetch(url, config);
-  let data = null;
-  try { data = await res.json(); } catch { /* no body */ }
+    const res = await fetch(url, config);
 
-  if (!res.ok) {
-    const err = new Error(data?.error || res.statusText || 'API request failed');
-    err.status = res.status;
-    err.data = data;
-    throw err;
+    // Parse JSON when possible; fall back to text for clearer error messages
+    let data;
+    const ct = res.headers.get('content-type') || '';
+    try {
+      data = ct.includes('application/json') ? await res.json() : await res.text();
+    } catch {
+      data = undefined;
+    }
+
+    if (!res.ok) {
+      const msg =
+        (data && (data.error || data.message)) ||
+        res.statusText ||
+        'API request failed';
+      const err = new Error(msg);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+
+    return data;
   }
-  return data;
-}
 
-  // Auth endpoints
+  // ---------- Auth ----------
   async login(walletAddress, signature, message) {
     return this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress, signature, message }),
+      body: JSON.stringify({
+        walletAddress: toAddr(walletAddress),
+        signature,
+        message,
+      }),
     });
   }
 
   async register(userData) {
+    const payload = { ...(userData || {}) };
+    if (payload.walletAddress) payload.walletAddress = toAddr(payload.walletAddress);
     return this.request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify(userData),
+      body: JSON.stringify(payload),
     });
   }
 
-  // User endpoints
+  // ---------- Users ----------
   async getUser(walletAddress) {
-    return this.request(`/users/${walletAddress}`);
+    return this.request(`/users/${toAddr(walletAddress)}`);
   }
 
   async getAllUsers() {
@@ -55,20 +76,20 @@ class ApiClient {
   }
 
   async updateUserBadges(walletAddress, badges) {
-    return this.request(`/users/${walletAddress}/badges`, {
+    return this.request(`/users/${toAddr(walletAddress)}/badges`, {
       method: 'PUT',
       body: JSON.stringify({ badges }),
     });
   }
 
-  // Claim endpoints
+  // ---------- Claims ----------
   async getAllClaims(filters = {}) {
-    const params = new URLSearchParams(filters);
-    return this.request(`/claims?${params}`);
+    const qs = new URLSearchParams(filters).toString();
+    return this.request(`/claims${qs ? `?${qs}` : ''}`);
   }
 
   async getClaim(claimId) {
-    return this.request(`/claims/${claimId}`);
+    return this.request(`/claims/${encodeURIComponent(claimId)}`);
   }
 
   async createClaim(claimData) {
@@ -79,25 +100,25 @@ class ApiClient {
   }
 
   async updateClaim(claimId, updates) {
-    return this.request(`/claims/${claimId}`, {
+    return this.request(`/claims/${encodeURIComponent(claimId)}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
   }
 
   async deleteClaim(claimId) {
-    return this.request(`/claims/${claimId}`, {
+    return this.request(`/claims/${encodeURIComponent(claimId)}`, {
       method: 'DELETE',
     });
   }
 
-  // Vote endpoints
+  // ---------- Votes ----------
   async getVotesForClaim(claimId) {
-    return this.request(`/votes/${claimId}`);
+    return this.request(`/votes/${encodeURIComponent(claimId)}`);
   }
 
   async getUserVotes(walletAddress) {
-    return this.request(`/votes/user/${walletAddress}`);
+    return this.request(`/votes/user/${toAddr(walletAddress)}`);
   }
 
   async createVote(voteData) {
@@ -108,23 +129,24 @@ class ApiClient {
   }
 
   async updateVote(claimId, voter, updates) {
-    return this.request(`/votes/${claimId}/${voter}`, {
+    return this.request(`/votes/${encodeURIComponent(claimId)}/${toAddr(voter)}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
   }
 
-  // Badge endpoints
+  // ---------- Badges ----------
   async mintBadge(walletAddress, badgeData) {
-    return this.request(`/badges/${walletAddress}`, {
+    return this.request(`/badges/${toAddr(walletAddress)}`, {
       method: 'POST',
       body: JSON.stringify(badgeData),
     });
   }
 
   async getUserBadges(walletAddress) {
-    return this.request(`/badges/${walletAddress}`);
+    return this.request(`/badges/${toAddr(walletAddress)}`);
   }
 }
 
 export const apiClient = new ApiClient();
+export { ApiClient };

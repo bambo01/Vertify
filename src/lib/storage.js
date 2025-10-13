@@ -1,5 +1,8 @@
-// v3.0: Full-stack storage with API integration
-// Uses backend API with MongoDB, with localStorage fallback for offline mode
+// v3.1: Full-stack storage with API integration (MongoDB backend + localStorage fallback)
+// - Keeps localStorage paths intact
+// - Robust user registration: lowercases wallet, upserts via /auth/register, then updates badges
+// - Graceful 404 handling for missing users
+// - Normalizes backend shapes to frontend shapes
 
 import { apiClient } from "./api-client";
 
@@ -7,9 +10,8 @@ const CLAIMS_KEY = "truthchain_claims";
 const VOTES_KEY = "truthchain_votes";
 const USERS_KEY = "truthchain_users";
 
-// Set to true for offline development with localStorage
-// NOTE: Backend requires MongoDB running on localhost:27017 and server running on port 5000
-// To use backend: Start MongoDB, run 'npm run server:dev', then set USE_LOCALSTORAGE = false
+// Toggle to true for offline/localStorage-only development
+// Backend mode requires a live API behind /api (Next.js rewrite) or NEXT_PUBLIC_API_ORIGIN.
 const USE_LOCALSTORAGE = false;
 
 /** Normalize arbitrary shapes into a flat array of users */
@@ -25,7 +27,7 @@ function normalizeUsers(u) {
 }
 
 export const storage = {
-  // Claims
+  // -------------------- Claims --------------------
   async getClaims() {
     if (typeof window === "undefined") return [];
 
@@ -40,14 +42,11 @@ export const storage = {
 
     try {
       const backendClaims = await apiClient.getAllClaims();
-      // Normalize backend data to frontend format
       return backendClaims.map((claim) => ({
         ...claim,
         id: claim.claimId || claim.id,
         authorAddress: claim.poster,
-        createdAt: claim.postedAt
-          ? new Date(claim.postedAt).getTime()
-          : claim.createdAt,
+        createdAt: claim.postedAt ? new Date(claim.postedAt).getTime() : claim.createdAt,
       }));
     } catch (error) {
       console.error("Error fetching claims:", error);
@@ -66,7 +65,6 @@ export const storage = {
     }
 
     try {
-      // Convert frontend format to backend format
       const backendClaim = {
         title: claim.title,
         summary: claim.summary,
@@ -79,7 +77,6 @@ export const storage = {
         voterScope: claim.voterScope,
       };
       const savedClaim = await apiClient.createClaim(backendClaim);
-      // Normalize backend response to frontend format
       return {
         ...savedClaim,
         id: savedClaim.claimId,
@@ -97,9 +94,7 @@ export const storage = {
 
     if (USE_LOCALSTORAGE) {
       const claims = await this.getClaims();
-      const index = claims.findIndex(
-        (c) => c.id === claimId || c.claimId === claimId
-      );
+      const index = claims.findIndex((c) => c.id === claimId || c.claimId === claimId);
       if (index !== -1) {
         claims[index] = { ...claims[index], ...updates };
         localStorage.setItem(CLAIMS_KEY, JSON.stringify(claims));
@@ -110,7 +105,6 @@ export const storage = {
 
     try {
       const backendClaim = await apiClient.updateClaim(claimId, updates);
-      // Normalize backend data to frontend format
       if (backendClaim && backendClaim.claimId) {
         return {
           ...backendClaim,
@@ -129,14 +123,11 @@ export const storage = {
   async getClaim(claimId) {
     if (USE_LOCALSTORAGE) {
       const claims = await this.getClaims();
-      return claims.find(
-        (c) => c.id === claimId || c.claimId === claimId
-      );
+      return claims.find((c) => c.id === claimId || c.claimId === claimId);
     }
 
     try {
       const backendClaim = await apiClient.getClaim(claimId);
-      // Normalize backend data to frontend format
       if (backendClaim && backendClaim.claimId) {
         return {
           ...backendClaim,
@@ -152,7 +143,7 @@ export const storage = {
     }
   },
 
-  // Votes
+  // -------------------- Votes --------------------
   async getVotes() {
     if (typeof window === "undefined") return [];
 
@@ -165,7 +156,7 @@ export const storage = {
       }
     }
 
-    // API doesn't have get all votes, return empty
+    // No "get all votes" API currently
     return [];
   },
 
@@ -180,7 +171,6 @@ export const storage = {
     }
 
     try {
-      // Convert frontend format to backend format
       const backendVote = {
         claimId: vote.claimId,
         voter: vote.voterAddress,
@@ -193,7 +183,6 @@ export const storage = {
         weight: vote.weight,
       };
       const savedVote = await apiClient.createVote(backendVote);
-      // Normalize backend response to frontend format
       return {
         ...savedVote,
         voterAddress: savedVote.voter,
@@ -213,7 +202,6 @@ export const storage = {
 
     try {
       const backendVotes = await apiClient.getVotesForClaim(claimId);
-      // Normalize backend data to frontend format
       return backendVotes.map((vote) => ({
         ...vote,
         voterAddress: vote.voter,
@@ -228,15 +216,11 @@ export const storage = {
   async getUserVotes(address) {
     if (USE_LOCALSTORAGE) {
       const votes = await this.getVotes();
-      return votes.filter(
-        (v) =>
-          v.voterAddress?.toLowerCase() === address.toLowerCase()
-      );
+      return votes.filter((v) => v.voterAddress?.toLowerCase() === address.toLowerCase());
     }
 
     try {
-      const backendVotes = await apiClient.getUserVotes(address);
-      // Normalize backend data to frontend format
+      const backendVotes = await apiClient.getUserVotes(String(address).toLowerCase());
       return backendVotes.map((vote) => ({
         ...vote,
         voterAddress: vote.voter,
@@ -257,7 +241,7 @@ export const storage = {
     );
   },
 
-  // User Profiles
+  // -------------------- Users --------------------
   async getUsers() {
     if (typeof window === "undefined") return [];
 
@@ -290,33 +274,33 @@ export const storage = {
     }
 
     try {
-    const backendUser = await apiClient.getUser(address.toLowerCase());
-    if (backendUser?.walletAddress) {
-      return {
-        ...backendUser,
-        address: backendUser.walletAddress,
-        displayName: backendUser.displayName || backendUser.walletAddress.slice(0, 6),
-        categories: backendUser.badges?.map(b => b.category) || [],
-      };
+      const backendUser = await apiClient.getUser(String(address).toLowerCase());
+      if (backendUser?.walletAddress) {
+        return {
+          ...backendUser,
+          address: backendUser.walletAddress,
+          displayName: backendUser.displayName || backendUser.walletAddress.slice(0, 6),
+          categories: backendUser.badges?.map((b) => b.category) || [],
+        };
+      }
+      return backendUser;
+    } catch (err) {
+      if (err.status === 404) return null; // not registered yet
+      console.error("Error fetching user profile:", err);
+      return null;
     }
-    return backendUser;
-  } catch (err) {
-    if (err.status === 404) return null; // not an error; just not created yet
-    console.error("Error fetching user profile:", err);
-    return null;
-  }
   },
 
   async saveUserProfile(profile) {
     if (typeof window === "undefined") return profile;
 
+    // ---------- localStorage mode ----------
     if (USE_LOCALSTORAGE) {
       const users = await this.getUsers();
       const index = users.findIndex(
         (u) =>
           u.address?.toLowerCase() === profile.address?.toLowerCase() ||
-          u.walletAddress?.toLowerCase() ===
-            profile.walletAddress?.toLowerCase()
+          u.walletAddress?.toLowerCase() === profile.walletAddress?.toLowerCase()
       );
 
       if (index !== -1) {
@@ -328,10 +312,14 @@ export const storage = {
       return profile;
     }
 
+    // ---------- backend mode ----------
     try {
-      // Convert frontend format to backend format
+      const wallet = String(profile.address || profile.walletAddress || "").toLowerCase();
+      const badges = Array.isArray(profile.badges) ? profile.badges : [];
+
+      // Upsert the core user data via /auth/register
       const backendProfile = {
-        walletAddress: profile.address || profile.walletAddress,
+        walletAddress: wallet,
         roles: profile.roles,
         city: profile.city,
         province: profile.province,
@@ -339,16 +327,22 @@ export const storage = {
         roleHash: profile.roleHash,
         geoHash: profile.geoHash,
       };
-      
-      const savedProfile = await apiClient.register(backendProfile);
+
+      const savedUser = await apiClient.register(backendProfile);
+
+      // Persist category badges after registration (where categories are stored)
+      if (badges.length > 0) {
+        await apiClient.updateUserBadges(wallet, badges);
+      }
+
       // Normalize backend response to frontend format
       return {
         ...profile,
-        ...savedProfile,
-        address: savedProfile.walletAddress,
+        ...savedUser,
+        address: savedUser.walletAddress || wallet,
       };
     } catch (error) {
-      console.error("Error saving user profile:", error);
+      console.error("Error saving user profile:", error?.status, error?.data || error);
       throw error;
     }
   },
@@ -373,30 +367,31 @@ export const storage = {
     }
 
     try {
-      const profile = await this.getUserProfile(address);
-      if (profile) {
-        return await apiClient.register({ ...profile, ...updates });
+      // Reuse register (upsert) for updates
+      const wallet = String(address).toLowerCase();
+      const payload = { walletAddress: wallet, ...updates };
+      const saved = await apiClient.register(payload);
+
+      // If badges were part of updates, push them separately
+      if (Array.isArray(updates.badges) && updates.badges.length > 0) {
+        await apiClient.updateUserBadges(wallet, updates.badges);
       }
-      return null;
+
+      return { ...saved, address: saved.walletAddress };
     } catch (error) {
       console.error("Error updating user profile:", error);
       throw error;
     }
   },
 
-  // Badge Management
+  // -------------------- Badges --------------------
   async updateBadge(address, category, updates) {
     const profile = await this.getUserProfile(address);
     if (!profile) return null;
 
-    const badgeIndex = profile.badges?.findIndex(
-      (b) => b.category === category
-    );
+    const badgeIndex = profile.badges?.findIndex((b) => b.category === category);
     if (badgeIndex !== -1 && badgeIndex !== undefined) {
-      profile.badges[badgeIndex] = {
-        ...profile.badges[badgeIndex],
-        ...updates,
-      };
+      profile.badges[badgeIndex] = { ...profile.badges[badgeIndex], ...updates };
       return await this.saveUserProfile(profile);
     }
     return null;
@@ -406,9 +401,7 @@ export const storage = {
     const profile = await this.getUserProfile(address);
     if (!profile) return null;
 
-    const badgeIndex = profile.badges?.findIndex(
-      (b) => b.category === category
-    );
+    const badgeIndex = profile.badges?.findIndex((b) => b.category === category);
     if (badgeIndex !== -1 && badgeIndex !== undefined) {
       profile.badges[badgeIndex] = {
         ...profile.badges[badgeIndex],
@@ -420,13 +413,12 @@ export const storage = {
     return null;
   },
 
-  // Category filters
+  // -------------------- Helpers --------------------
   async getClaimsByCategory(category) {
     const claims = await this.getClaims();
     return claims.filter((c) => c.category === category);
   },
 
-  // Clear all (localStorage only)
   clearAll() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(CLAIMS_KEY);
