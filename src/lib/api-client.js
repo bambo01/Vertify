@@ -2,7 +2,7 @@
 
 /**
  * API Client for TruthChain Backend
- * - Uses NEXT_PUBLIC_API_ORIGIN if set; otherwise defaults to /api (recommended with Next.js rewrite)
+ * - Uses NEXT_PUBLIC_API_ORIGIN if set; otherwise defaults to /api
  */
 const API_URL = (process.env.NEXT_PUBLIC_API_ORIGIN || '/api').replace(/\/$/, '');
 
@@ -22,7 +22,7 @@ class ApiClient {
 
     const res = await fetch(url, config);
 
-    // Parse JSON when possible; fall back to text for clearer error messages
+    // try JSON, fallback to text for better error display
     let data;
     const ct = res.headers.get('content-type') || '';
     try {
@@ -41,32 +41,18 @@ class ApiClient {
       err.data = data;
       throw err;
     }
-
     return data;
   }
 
-  // ---------- Auth ----------
-  async login(walletAddress, signature, message) {
-    return this.request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        walletAddress: toAddr(walletAddress),
-        signature,
-        message,
-      }),
-    });
-  }
-
+  // ---------- Auth / Users (core upsert) ----------
   async register(userData) {
-    const payload = { ...(userData || {}) };
-    if (payload.walletAddress) payload.walletAddress = toAddr(payload.walletAddress);
+    // single upsert for core profile fields
     return this.request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(userData || {}),
     });
   }
 
-  // ---------- Users ----------
   async getUser(walletAddress) {
     return this.request(`/users/${toAddr(walletAddress)}`);
   }
@@ -75,10 +61,27 @@ class ApiClient {
     return this.request('/users');
   }
 
+  // ---------- Category badges ----------
   async updateUserBadges(walletAddress, badges) {
     return this.request(`/users/${toAddr(walletAddress)}/badges`, {
       method: 'PUT',
       body: JSON.stringify({ badges }),
+    });
+  }
+
+  // ---------- Categories (explicit) ----------
+  async updateUserCategories(walletAddress, categories) {
+    return this.request(`/users/${toAddr(walletAddress)}/categories`, {
+      method: 'PUT',
+      body: JSON.stringify({ categories }),
+    });
+  }
+
+  // ---------- Role verifications (roleBadges + roleVerificationSummary) ----------
+  async upsertVerifications(walletAddress, payload) {
+    return this.request(`/users/${toAddr(walletAddress)}/verifications`, {
+      method: 'PUT',
+      body: JSON.stringify(payload || {}),
     });
   }
 
@@ -135,7 +138,7 @@ class ApiClient {
     });
   }
 
-  // ---------- Badges ----------
+  // ---------- Badge mint/get (optional) ----------
   async mintBadge(walletAddress, badgeData) {
     return this.request(`/badges/${toAddr(walletAddress)}`, {
       method: 'POST',

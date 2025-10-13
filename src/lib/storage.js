@@ -1,45 +1,109 @@
-// v3.1: Full-stack storage with API integration (MongoDB backend + localStorage fallback)
-// - Keeps localStorage paths intact
-// - Robust user registration: lowercases wallet, upserts via /auth/register, then updates badges
-// - Graceful 404 handling for missing users
-// - Normalizes backend shapes to frontend shapes
+// lib/storage.js
+// v3.5 — Send the whole profile to /auth/register (sanitized), then persist badges separately.
+// - Normalizes walletAddress
+// - Includes displayName + roleVerificationSummary
+// - Strips any idImage.dataUrl / File/Blob in the payload to avoid 413
+// - Avoids Mongo update-path conflicts by removing badges/categories/roleBadges in /auth/register
+// - Keeps localStorage fallback intact
 
 import { apiClient } from "./api-client";
 
 const CLAIMS_KEY = "truthchain_claims";
-const VOTES_KEY = "truthchain_votes";
-const USERS_KEY = "truthchain_users";
+const VOTES_KEY  = "truthchain_votes";
+const USERS_KEY  = "truthchain_users";
 
-// Toggle to true for offline/localStorage-only development
-// Backend mode requires a live API behind /api (Next.js rewrite) or NEXT_PUBLIC_API_ORIGIN.
+// Toggle true for offline/localStorage-only development
 const USE_LOCALSTORAGE = false;
 
-/** Normalize arbitrary shapes into a flat array of users */
+/* ---------------------------- helpers ---------------------------- */
+
 function normalizeUsers(u) {
   if (!u) return [];
-  if (typeof u === "string") {
-    try { u = JSON.parse(u); } catch { return []; }
-  }
+  if (typeof u === "string") { try { u = JSON.parse(u); } catch { return []; } }
   if (Array.isArray(u)) return u;
-  if (Array.isArray(u?.users)) return u.users;  // { users: [...] }
+  if (Array.isArray(u?.users)) return u.users;           // { users: [...] }
   if (u && typeof u === "object") return Object.values(u); // {id1:{}, id2:{}}
   return [];
 }
+
+// Deep clone + strip *heavy or local-only* stuff (File/Blob, dataUrl, previews)
+function deepSanitizeProfile(input) {
+  const seen = new WeakSet();
+  const isFileLike = (v) =>
+    v &&
+    typeof v === "object" &&
+    (
+      (typeof File !== "undefined" && v instanceof File) ||
+      (typeof Blob !== "undefined" && v instanceof Blob) ||
+      ("arrayBuffer" in v && "type" in v && ("name" in v || "size" in v))
+    );
+
+  const stripKeys = new Set([
+    "studentImageFile",
+    "prcImageFileMain",
+    "studentImagePreview",
+    "prcImagePreviewMain",
+    "studentImageError",
+    "prcImageErrorMain",
+  ]);
+
+  const recur = (obj) => {
+    if (obj === null || typeof obj !== "object") return obj;
+    if (seen.has(obj)) return undefined;
+    seen.add(obj);
+
+    if (Array.isArray(obj)) {
+      return obj.map(recur).filter((v) => v !== undefined);
+    }
+
+    if (isFileLike(obj)) return undefined;
+
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (stripKeys.has(k)) continue;
+
+      // Keep light idImage metadata, drop the base64
+      if (k === "idImage" && v && typeof v === "object") {
+        const light = { name: v.name, type: v.type, size: v.size };
+        if (light.name || light.type || typeof light.size === "number") {
+          out[k] = light;
+        }
+        continue;
+      }
+
+      if (typeof v === "string" && v.startsWith("data:")) {
+        // Drop any accidental dataUrl strings
+        continue;
+      }
+
+      const child = recur(v);
+      if (child !== undefined) out[k] = child;
+    }
+    return out;
+  };
+
+  return recur(input);
+}
+
+// Remove undefined keys shallowly (for cleaner console logs)
+function stripUndefinedShallow(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/* ----------------------------- storage ----------------------------- */
 
 export const storage = {
   // -------------------- Claims --------------------
   async getClaims() {
     if (typeof window === "undefined") return [];
-
     if (USE_LOCALSTORAGE) {
-      try {
-        const claims = localStorage.getItem(CLAIMS_KEY);
-        return claims ? JSON.parse(claims) : [];
-      } catch {
-        return [];
-      }
+      try { return JSON.parse(localStorage.getItem(CLAIMS_KEY) || "[]"); }
+      catch { return []; }
     }
-
     try {
       const backendClaims = await apiClient.getAllClaims();
       return backendClaims.map((claim) => ({
@@ -56,14 +120,12 @@ export const storage = {
 
   async saveClaim(claim) {
     if (typeof window === "undefined") return claim;
-
     if (USE_LOCALSTORAGE) {
       const claims = await this.getClaims();
       claims.push(claim);
       localStorage.setItem(CLAIMS_KEY, JSON.stringify(claims));
       return claim;
     }
-
     try {
       const backendClaim = {
         title: claim.title,
@@ -91,21 +153,19 @@ export const storage = {
 
   async updateClaim(claimId, updates) {
     if (typeof window === "undefined") return null;
-
     if (USE_LOCALSTORAGE) {
       const claims = await this.getClaims();
-      const index = claims.findIndex((c) => c.id === claimId || c.claimId === claimId);
-      if (index !== -1) {
-        claims[index] = { ...claims[index], ...updates };
+      const i = claims.findIndex((c) => c.id === claimId || c.claimId === claimId);
+      if (i !== -1) {
+        claims[i] = { ...claims[i], ...updates };
         localStorage.setItem(CLAIMS_KEY, JSON.stringify(claims));
-        return claims[index];
+        return claims[i];
       }
       return null;
     }
-
     try {
       const backendClaim = await apiClient.updateClaim(claimId, updates);
-      if (backendClaim && backendClaim.claimId) {
+      if (backendClaim?.claimId) {
         return {
           ...backendClaim,
           id: backendClaim.claimId,
@@ -125,10 +185,9 @@ export const storage = {
       const claims = await this.getClaims();
       return claims.find((c) => c.id === claimId || c.claimId === claimId);
     }
-
     try {
       const backendClaim = await apiClient.getClaim(claimId);
-      if (backendClaim && backendClaim.claimId) {
+      if (backendClaim?.claimId) {
         return {
           ...backendClaim,
           id: backendClaim.claimId,
@@ -146,30 +205,21 @@ export const storage = {
   // -------------------- Votes --------------------
   async getVotes() {
     if (typeof window === "undefined") return [];
-
     if (USE_LOCALSTORAGE) {
-      try {
-        const votes = localStorage.getItem(VOTES_KEY);
-        return votes ? JSON.parse(votes) : [];
-      } catch {
-        return [];
-      }
+      try { return JSON.parse(localStorage.getItem(VOTES_KEY) || "[]"); }
+      catch { return []; }
     }
-
-    // No "get all votes" API currently
-    return [];
+    return []; // no backend "get all votes" endpoint
   },
 
   async saveVote(vote) {
     if (typeof window === "undefined") return vote;
-
     if (USE_LOCALSTORAGE) {
       const votes = await this.getVotes();
       votes.push(vote);
       localStorage.setItem(VOTES_KEY, JSON.stringify(votes));
       return vote;
     }
-
     try {
       const backendVote = {
         claimId: vote.claimId,
@@ -183,11 +233,7 @@ export const storage = {
         weight: vote.weight,
       };
       const savedVote = await apiClient.createVote(backendVote);
-      return {
-        ...savedVote,
-        voterAddress: savedVote.voter,
-        vote: savedVote.position,
-      };
+      return { ...savedVote, voterAddress: savedVote.voter, vote: savedVote.position };
     } catch (error) {
       console.error("Error saving vote:", error);
       throw error;
@@ -199,14 +245,9 @@ export const storage = {
       const votes = await this.getVotes();
       return votes.filter((v) => v.claimId === claimId);
     }
-
     try {
       const backendVotes = await apiClient.getVotesForClaim(claimId);
-      return backendVotes.map((vote) => ({
-        ...vote,
-        voterAddress: vote.voter,
-        vote: vote.position,
-      }));
+      return backendVotes.map((vote) => ({ ...vote, voterAddress: vote.voter, vote: vote.position }));
     } catch (error) {
       console.error("Error fetching votes for claim:", error);
       return [];
@@ -218,14 +259,9 @@ export const storage = {
       const votes = await this.getVotes();
       return votes.filter((v) => v.voterAddress?.toLowerCase() === address.toLowerCase());
     }
-
     try {
       const backendVotes = await apiClient.getUserVotes(String(address).toLowerCase());
-      return backendVotes.map((vote) => ({
-        ...vote,
-        voterAddress: vote.voter,
-        vote: vote.position,
-      }));
+      return backendVotes.map((vote) => ({ ...vote, voterAddress: vote.voter, vote: vote.position }));
     } catch (error) {
       console.error("Error fetching user votes:", error);
       return [];
@@ -244,16 +280,10 @@ export const storage = {
   // -------------------- Users --------------------
   async getUsers() {
     if (typeof window === "undefined") return [];
-
     if (USE_LOCALSTORAGE) {
-      try {
-        const users = localStorage.getItem(USERS_KEY);
-        return normalizeUsers(users ? JSON.parse(users) : []);
-      } catch {
-        return [];
-      }
+      try { return normalizeUsers(JSON.parse(localStorage.getItem(USERS_KEY) || "[]")); }
+      catch { return []; }
     }
-
     try {
       const backend = await apiClient.getAllUsers();
       return normalizeUsers(backend);
@@ -272,14 +302,14 @@ export const storage = {
           u.walletAddress?.toLowerCase() === address.toLowerCase()
       );
     }
-
     try {
       const backendUser = await apiClient.getUser(String(address).toLowerCase());
       if (backendUser?.walletAddress) {
         return {
           ...backendUser,
           address: backendUser.walletAddress,
-          displayName: backendUser.displayName || backendUser.walletAddress.slice(0, 6),
+          displayName:
+            backendUser.displayName || backendUser.walletAddress.slice(0, 6),
           categories: backendUser.badges?.map((b) => b.category) || [],
         };
       }
@@ -291,6 +321,7 @@ export const storage = {
     }
   },
 
+  // -------------------- Save / Update Profile --------------------
   async saveUserProfile(profile) {
     if (typeof window === "undefined") return profile;
 
@@ -302,12 +333,7 @@ export const storage = {
           u.address?.toLowerCase() === profile.address?.toLowerCase() ||
           u.walletAddress?.toLowerCase() === profile.walletAddress?.toLowerCase()
       );
-
-      if (index !== -1) {
-        users[index] = profile;
-      } else {
-        users.push(profile);
-      }
+      if (index !== -1) users[index] = profile; else users.push(profile);
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
       return profile;
     }
@@ -315,34 +341,48 @@ export const storage = {
     // ---------- backend mode ----------
     try {
       const wallet = String(profile.address || profile.walletAddress || "").toLowerCase();
-      const badges = Array.isArray(profile.badges) ? profile.badges : [];
 
-      // Upsert the core user data via /auth/register
-      const backendProfile = {
-        walletAddress: wallet,
-        roles: profile.roles,
-        city: profile.city,
-        province: profile.province,
-        country: profile.country,
-        roleHash: profile.roleHash,
-        geoHash: profile.geoHash,
-      };
+      // Build & sanitize full profile
+      const toSend = deepSanitizeProfile({
+        ...profile,
+        walletAddress: wallet, // normalize
+      });
+      delete toSend.address; // avoid duplicate field
 
-      const savedUser = await apiClient.register(backendProfile);
+      // ⬇️ Extract fields that cause conflicts in /auth/register
+      const badges     = Array.isArray(toSend.badges) ? toSend.badges : [];
+      const categories = Array.isArray(toSend.categories) ? toSend.categories : [];
+      const roleBadges = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
+      delete toSend.badges;
+      delete toSend.categories;
+      delete toSend.roleBadges;
 
-      // Persist category badges after registration (where categories are stored)
+      console.log("[storage.saveUserProfile] → /auth/register payload", stripUndefinedShallow(toSend));
+      const savedUser = await apiClient.register(toSend);
+      console.log("[storage.saveUserProfile] ← /auth/register response", savedUser);
+
+      // Persist badges separately (server can derive categories)
       if (badges.length > 0) {
-        await apiClient.updateUserBadges(wallet, badges);
+        console.log(`[storage.saveUserProfile] → /users/${wallet}/badges payload`, badges);
+        const badgesResp = await apiClient.updateUserBadges(wallet, badges);
+        console.log(`[storage.saveUserProfile] ← /users/${wallet}/badges response`, badgesResp);
+      } else {
+        console.log("[storage.saveUserProfile] (no badges to persist)");
       }
 
-      // Normalize backend response to frontend format
-      return {
+      // (Optional future: categories/roleBadges endpoints)
+      // if (categories.length) await apiClient.updateUserCategories(wallet, categories);
+      // if (roleBadges.length) await apiClient.upsertVerifications(wallet, { roleBadges });
+
+      const normalized = {
         ...profile,
         ...savedUser,
         address: savedUser.walletAddress || wallet,
       };
+      console.log("[storage.saveUserProfile] returning normalized profile ←", normalized);
+      return normalized;
     } catch (error) {
-      console.error("Error saving user profile:", error?.status, error?.data || error);
+      console.error("[storage.saveUserProfile] ERROR", { status: error?.status }, error?.data || error);
       throw error;
     }
   },
@@ -357,7 +397,6 @@ export const storage = {
           u.address?.toLowerCase() === address.toLowerCase() ||
           u.walletAddress?.toLowerCase() === address.toLowerCase()
       );
-
       if (index !== -1) {
         users[index] = { ...users[index], ...updates };
         localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -367,24 +406,42 @@ export const storage = {
     }
 
     try {
-      // Reuse register (upsert) for updates
       const wallet = String(address).toLowerCase();
-      const payload = { walletAddress: wallet, ...updates };
-      const saved = await apiClient.register(payload);
 
-      // If badges were part of updates, push them separately
-      if (Array.isArray(updates.badges) && updates.badges.length > 0) {
-        await apiClient.updateUserBadges(wallet, updates.badges);
+      const current = await this.getUserProfile(wallet);
+      const merged = { ...(current || {}), ...updates, walletAddress: wallet };
+      delete merged.address;
+
+      const toSend = deepSanitizeProfile(merged);
+
+      // Strip fields that conflict in register call
+      const badges     = Array.isArray(toSend.badges) ? toSend.badges : [];
+      const categories = Array.isArray(toSend.categories) ? toSend.categories : [];
+      const roleBadges = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
+      delete toSend.badges;
+      delete toSend.categories;
+      delete toSend.roleBadges;
+
+      console.log("[storage.updateUserProfile] → /auth/register payload", stripUndefinedShallow(toSend));
+      const saved = await apiClient.register(toSend);
+      console.log("[storage.updateUserProfile] ← /auth/register response", saved);
+
+      if (badges.length > 0) {
+        console.log(`[storage.updateUserProfile] → /users/${wallet}/badges payload`, badges);
+        const resp = await apiClient.updateUserBadges(wallet, badges);
+        console.log(`[storage.updateUserProfile] ← /users/${wallet}/badges response`, resp);
       }
+
+      // (Optional future) categories / roleBadges endpoints here
 
       return { ...saved, address: saved.walletAddress };
     } catch (error) {
-      console.error("Error updating user profile:", error);
+      console.error("[storage.updateUserProfile] ERROR", error?.status, error?.data || error);
       throw error;
     }
   },
 
-  // -------------------- Badges --------------------
+  // -------------------- Badges helpers --------------------
   async updateBadge(address, category, updates) {
     const profile = await this.getUserProfile(address);
     if (!profile) return null;
