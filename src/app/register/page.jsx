@@ -515,7 +515,7 @@ export default function RegisterPage() {
 
   if (!isClient) {
     return (
-      <div className="container mx-auto px-4 py-8 sm:py-12">
+      <div className="container mx-auto px-4 py-8 sm:py-12 ">
         <div className="animate-pulse space-y-4">
           <div className="h-12 bg-gray-200 rounded w-1/3" />
           <div className="h-64 bg-gray-200 rounded" />
@@ -571,10 +571,10 @@ export default function RegisterPage() {
 
   return (
     <WalletRequired>
-      <div className="container mx-auto px-4 py-8 sm:py-12 max-w-4xl">
+      <div className="container mx-auto px-4 py-8 sm:py-12 max-w-4xl ">
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold mb-2">Join Vertify</h1>
-          <p className="text-sm sm:text-base text-gray-600">
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-200">
             Become a fact-checker and earn rewards for accuracy
           </p>
         </div>
@@ -584,12 +584,12 @@ export default function RegisterPage() {
           <div className="flex justify-center items-center gap-2 sm:gap-4 min-w-max">
             <div
               className={`flex items-center gap-2 ${
-                step >= 1 ? "text-blue-600" : "text-gray-400"
+                step >= 1 ? "text-[#44ADFF]" : "text-gray-400"
               }`}
             >
               <div
                 className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 1 ? "bg-blue-600 text-white" : "bg-gray-200"
+                  step >= 1 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
                 }`}
               >
                 {step > 1 ? (
@@ -605,12 +605,12 @@ export default function RegisterPage() {
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
               className={`flex items-center gap-2 ${
-                step >= 2 ? "text-blue-600" : "text-gray-400"
+                step >= 2 ? "text-[#44ADFF]" : "text-gray-400"
               }`}
             >
               <div
                 className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 2 ? "bg-blue-600 text-white" : "bg-gray-200"
+                  step >= 2 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
                 }`}
               >
                 {step > 2 ? (
@@ -626,12 +626,12 @@ export default function RegisterPage() {
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
               className={`flex items-center gap-2 ${
-                step >= 3 ? "text-blue-600" : "text-gray-400"
+                step >= 3 ? "text-[#44ADFF]" : "text-gray-400"
               }`}
             >
               <div
                 className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 3 ? "bg-blue-600 text-white" : "bg-gray-200"
+                  step >= 3 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
                 }`}
               >
                 {step > 3 ? (
@@ -647,12 +647,12 @@ export default function RegisterPage() {
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
               className={`flex items-center gap-2 ${
-                step >= 4 ? "text-blue-600" : "text-gray-400"
+                step >= 4 ? "text-[#44ADFF]" : "text-gray-400"
               }`}
             >
               <div
                 className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 4 ? "bg-blue-600 text-white" : "bg-gray-200"
+                  step >= 4 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
                 }`}
               >
                 <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -666,13 +666,13 @@ export default function RegisterPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl sm:text-2xl">
+            <CardTitle className="text-xl sm:text-2xl dark:text-white ">
               {step === 1 && "Create Your Profile"}
               {step === 2 && "Your Location"}
               {step === 3 && "Your Professional Roles"}
               {step === 4 && "Select Your Expertise"}
             </CardTitle>
-            <CardDescription className="text-sm">
+            <CardDescription className="text-sm dark:text-gray-400">
               {step === 1 &&
                 "Choose a display name for your fact-checker identity"}
               {step === 2 &&
@@ -692,7 +692,7 @@ export default function RegisterPage() {
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 dark:text-white">
             {/* Step 1 */}
             {step === 1 && (
               <div className="space-y-4">
@@ -706,17 +706,17 @@ export default function RegisterPage() {
                     onChange={(e) => setDisplayName(e.target.value)}
                     maxLength={50}
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-white/80">
                     This name will be visible to others when you vote and submit
                     claims
                   </p>
                 </div>
-                <Card className="bg-blue-50 border-blue-200">
+                <Card className="bg-blue-50 border-blue-200 dark:border-gray-600">
                   <CardContent className="pt-4">
-                    <h3 className="font-semibold mb-2 text-sm sm:text-base">
+                    <h3 className="font-semibold mb-2 text-sm sm:text-base dark:text-white">
                       How TruthChain Works:
                     </h3>
-                    <ul className="text-xs sm:text-sm text-gray-700 space-y-1">
+                    <ul className="text-xs sm:text-sm text-gray-700 space-y-1 dark:text-gray-400">
                       <li>• Vote on claims with small stakes</li>
                       <li>• Earn badges in categories you know well</li>
                       <li>• Build your Truth Score by being accurate</li>
@@ -979,9 +979,9 @@ export default function RegisterPage() {
 
                 {/* Only PRC-or-LinkedIn roles (no Student, no "other") */}
                 {mode === "prc_or_linkedin" && (
-                  <Card className="bg-amber-50 border-amber-200">
+                  <Card className="bg-amber-50 border-amber-200 dark:border-amber-200/10">
                     <CardContent className="pt-4 space-y-4">
-                      <h3 className="font-semibold text-sm sm:text-base">
+                      <h3 className="font-semibold text-sm sm:text-base dark:text-white">
                         Choose Verification Method
                       </h3>
                       <div className="flex flex-wrap gap-2">
@@ -1102,7 +1102,7 @@ export default function RegisterPage() {
                     <CardContent className="pt-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <ExternalLink className="h-5 w-5 text-blue-600" />
-                        <h3 className="font-semibold text-sm sm:text-base">
+                        <h3 className="font-semibold text-sm sm:text-base dark:text-white">
                           LinkedIn Verification (Required)
                         </h3>
                       </div>
@@ -1135,12 +1135,12 @@ export default function RegisterPage() {
                   onChange={setSelectedCategories}
                   minRequired={1}
                 />
-                <Card className="bg-amber-50 border-amber-200">
+                <Card className="bg-amber-50 border-amber-200 dark:border-amber-200/10">
                   <CardContent className="pt-4">
-                    <h3 className="font-semibold mb-2 text-sm sm:text-base">
+                    <h3 className="font-semibold mb-2 text-sm sm:text-base dark:text-white">
                       Badge System:
                     </h3>
-                    <div className="text-xs sm:text-sm text-gray-700 space-y-2">
+                    <div className="text-xs sm:text-sm text-gray-700 space-y-2 dark:text-gray-400">
                       <p>
                         <strong>Silver Badge (Starting):</strong> Max 0.002 ETH
                         per vote, 1.0x weight
@@ -1163,16 +1163,16 @@ export default function RegisterPage() {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
               {step > 1 && (
                 <Button
-                  variant="outline"
+                
                   onClick={() => setStep(step - 1)}
-                  className="w-full sm:flex-1 order-2 sm:order-1"
+                  className="w-full sm:flex-1 order-2 sm:order-1 bg-[#3e3e42]"
                 >
                   Back
                 </Button>
               )}
               <Button
                 onClick={handleNext}
-                className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700 order-1 sm:order-2"
+                className="w-full sm:flex-1 bg-[#227DC3] hover:bg-blue-700 order-1 sm:order-2"
                 disabled={
                   (step === 1 && !displayName.trim()) ||
                   (step === 2 &&

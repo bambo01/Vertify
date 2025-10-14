@@ -20,7 +20,7 @@ export function RoleSelector({ selectedRoles, onChange, minRequired = 0 }) {
       <CardContent className="pt-6">
         <div className="flex items-center gap-2 mb-4">
           <Briefcase className="h-5 w-5 text-blue-600" />
-          <Label className="text-base font-semibold">
+          <Label className="text-base font-semibold dark:text-white">
             Select Your Roles {minRequired > 0 && `(Min: ${minRequired})`}
           </Label>
         </div>
@@ -28,7 +28,7 @@ export function RoleSelector({ selectedRoles, onChange, minRequired = 0 }) {
           {ROLES.map((role) => (
             <div
               key={role}
-              className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+              className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-gray-50 transition-colors dark:border-gray-600 dark:hover:bg-gray-50/10"
             >
               <Checkbox
                 id={`role-${role}`}

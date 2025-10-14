@@ -23,7 +23,7 @@ export default function RootLayout({
       <body className={`${poppins.variable} font-sans`}>
         <WalletProvider>
           <Navbar />
-          <main className="min-h-screen bg-white">
+          <main className="min-h-screen bg-white dark:bg-[#1A2745]">
             <FarcasterWrapper>{children}</FarcasterWrapper>
           </main>
           <Toaster />

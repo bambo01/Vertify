@@ -266,19 +266,19 @@ export default function ClaimDetailPage() {
         </div>
 
         <h1 className="text-4xl font-bold mb-4">{claim.title}</h1>
-        <p className="text-gray-700 text-lg mb-4">{claim.summary}</p>
+        <p className="text-gray-700 text-lg mb-4 dark:text-white">{claim.summary}</p>
 
         <div className="flex items-center gap-4 text-sm text-gray-600">
-          <span>By: {claim.author}</span>
+          <span className='dark:text-white'>By: {claim.author}</span>
           <span>•</span>
-          <span>{new Date(claim.createdAt).toLocaleDateString()}</span>
+          <span className='dark:text-white'>{new Date(claim.createdAt).toLocaleDateString()}</span>
         </div>
       </div>
 
       <div className="grid gap-6 mb-6">
         <Card>
           <CardHeader>
-            <CardTitle>Claim Details</CardTitle>
+            <CardTitle className='dark:text-white'>Claim Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -295,7 +295,7 @@ export default function ClaimDetailPage() {
 
             {claim.txHash && (
               <div className="space-y-2">
-                <p className="text-sm text-gray-600">Transaction Hash:</p>
+                <p className="text-sm text-gray-600 dark:text-white">Transaction Hash:</p>
                 <div className="flex items-center gap-2 p-2 bg-gray-50 rounded font-mono text-sm">
                   <span className="truncate flex-1">{claim.txHash}</span>
                   <Button size="sm" variant="ghost" onClick={() => copyToClipboard(claim.txHash || '')}>
@@ -307,7 +307,7 @@ export default function ClaimDetailPage() {
 
             {claim.ipfsCid && (
               <div className="space-y-2">
-                <p className="text-sm text-gray-600">IPFS CID:</p>
+                <p className="text-sm text-gray-600 dark:text-white">IPFS CID:</p>
                 <div className="flex items-center gap-2 p-2 bg-gray-50 rounded font-mono text-sm">
                   <span className="truncate flex-1">{claim.ipfsCid}</span>
                   <Button size="sm" variant="ghost" onClick={() => copyToClipboard(claim.ipfsCid || '')}>
@@ -322,20 +322,20 @@ export default function ClaimDetailPage() {
         {claim.voterScope && !claim.voterScope.everyone && (
           <Card className="border-2 border-blue-200 bg-blue-50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5 text-blue-600" />
+              <CardTitle className="flex items-center gap-2 dark:text-white">
+                <Lock className="h-5 w-5 text-blue-600 dark:text-white" />
                 Voter Eligibility Requirements (Custom Scope)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Alert className="bg-white border-blue-200">
+              <Alert className="bg-white border-blue-200 dark:bg-[#252526] dark:border-gray-800">
                 <AlertDescription className="text-sm">
                   This claim has custom voter restrictions. Only users meeting ALL requirements below can vote.
                 </AlertDescription>
               </Alert>
 
               {claim.voterScope.requireCategory && (
-                <div className="flex items-start gap-2 p-3 bg-white rounded">
+                <div className="flex items-start gap-2 p-3 bg-white rounded ">
                   <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-sm">Category Badge Required</p>
@@ -345,10 +345,10 @@ export default function ClaimDetailPage() {
               )}
 
               {claim.voterScope.allowedRoles.length > 0 && (
-                <div className="flex items-start gap-2 p-3 bg-white rounded">
+                <div className="flex items-start gap-2 p-3 bg-white rounded dark:bg-[#252526] dark:border-gray-800">
                   <Briefcase className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="font-semibold text-sm mb-2">Allowed Roles</p>
+                    <p className="font-semibold text-sm mb-2 dark:text-white">Allowed Roles</p>
                     <div className="flex flex-wrap gap-2">
                       {claim.voterScope.allowedRoles.map((role) => (
                         <Badge key={role} variant="outline" className="text-xs">
@@ -356,7 +356,7 @@ export default function ClaimDetailPage() {
                         </Badge>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">Must have at least one of these professional roles</p>
+                    <p className="text-xs text-gray-600 mt-1 dark:text-gray-400">Must have at least one of these professional roles</p>
                   </div>
                 </div>
               )}
@@ -364,26 +364,26 @@ export default function ClaimDetailPage() {
               {(claim.voterScope.allowedGeo.cities.length > 0 ||
                 claim.voterScope.allowedGeo.provinces.length > 0 ||
                 claim.voterScope.allowedGeo.countries.length > 0) && (
-                <div className="flex items-start gap-2 p-3 bg-white rounded">
+                <div className="flex items-start gap-2 p-3 bg-white rounded dark:bg-[#252526] dark:border-gray-800">
                   <MapPin className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="font-semibold text-sm mb-2">Geographic Restriction</p>
+                    <p className="font-semibold text-sm mb-2 dark:text-white">Geographic Restriction</p>
                     {claim.voterScope.allowedGeo.cities.length > 0 && (
-                      <p className="text-sm text-gray-700">
+                      <p className="text-sm text-gray-700 dark:text-gray-400">
                         City: <strong>{claim.voterScope.allowedGeo.cities.join(', ')}</strong>
                       </p>
                     )}
                     {claim.voterScope.allowedGeo.provinces.length > 0 && (
-                      <p className="text-sm text-gray-700">
+                      <p className="text-sm text-gray-700 dark:text-gray-400">
                         Province/State: <strong>{claim.voterScope.allowedGeo.provinces.join(', ')}</strong>
                       </p>
                     )}
                     {claim.voterScope.allowedGeo.countries.length > 0 && (
-                      <p className="text-sm text-gray-700">
+                      <p className="text-sm text-gray-700 dark:text-gray-400">
                         Country: <strong>{claim.voterScope.allowedGeo.countries.join(', ')}</strong>
                       </p>
                     )}
-                    <p className="text-xs text-gray-600 mt-1">Must be from the specified location</p>
+                    <p className="text-xs text-gray-600 mt-1 dark:text-gray-400">Must be from the specified location</p>
                   </div>
                 </div>
               )}
@@ -433,7 +433,7 @@ export default function ClaimDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 dark:text-white">
               <Users className="h-5 w-5" />
               Voting Results
             </CardTitle>
@@ -475,14 +475,14 @@ export default function ClaimDetailPage() {
         {claim.resolution && (
           <Card className="border-2 border-green-200 bg-green-50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 dark:text-white">
                 <Scale className="h-6 w-6 text-green-600" />
                 Weighted Resolution
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">Final Outcome:</span>
+                <span className="text-lg font-semibold dark:text-white">Final Outcome:</span>
                 <Badge
                   className={
                     claim.resolution.outcome === 'Verified'
@@ -496,17 +496,17 @@ export default function ClaimDetailPage() {
 
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Weighted Truth Score:</span>
-                  <span className="font-semibold">
+                  <span className='dark:text-white'>Weighted Truth Score:</span>
+                  <span className="font-semibold dark:text-white">
                     {(claim.resolution.weightedTruthScore * 100).toFixed(1)}%
                   </span>
                 </div>
                 <Progress value={claim.resolution.weightedTruthScore * 100} className="h-2" />
               </div>
 
-              <div className="p-3 bg-white rounded border">
-                <p className="text-sm font-semibold mb-2">Weight Breakdown:</p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-3 bg-white rounded border dark:bg-[#252526]">
+                <p className="text-sm font-semibold mb-2 dark:text-white">Weight Breakdown:</p>
+                <div className="grid grid-cols-2 gap-2 text-xs dark:text-gray-400">
                   <div>Stake Weight: {claim.resolution.breakdown.stakeWeight.toFixed(2)}</div>
                   <div>Badge Weight: {claim.resolution.breakdown.badgeWeight.toFixed(2)}</div>
                   <div>Evidence Weight: {claim.resolution.breakdown.evidenceWeight.toFixed(2)}</div>
@@ -518,9 +518,9 @@ export default function ClaimDetailPage() {
         )}
 
         {verifying && (
-          <Alert className="bg-blue-50 border-blue-200">
-            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-            <AlertDescription className="text-blue-800">
+          <Alert className="bg-blue-50 border-blue-200 dark:bg-[#252526]">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-white" />
+            <AlertDescription className="text-blue-800 dark:text-gray-400">
               AI is analyzing this claim with sources and calculating weighted resolution... This may take a moment.
             </AlertDescription>
           </Alert>
@@ -529,7 +529,7 @@ export default function ClaimDetailPage() {
         {votes.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Recent Votes ({votes.length})</CardTitle>
+              <CardTitle className='dark:text-white'>Recent Votes ({votes.length})</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">

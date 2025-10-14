@@ -115,8 +115,8 @@ export function ClaimCard({ claim }) {
             {getStatusBadge()}
           </div>
         </div>
-        <h3 className="text-lg font-semibold line-clamp-2 mb-2">{claim.title}</h3>
-        <p className="text-sm text-gray-600 line-clamp-2">{claim.summary}</p>
+        <h3 className="text-lg font-semibold line-clamp-2 mb-2 dark:text-white ">{claim.title}</h3>
+        <p className="text-sm text-gray-600 line-clamp-2 dark:text-gray-400">{claim.summary}</p>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -161,25 +161,25 @@ export function ClaimCard({ claim }) {
         )}
 
         {claim.aiVerdict && (
-          <div className="p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
+          <div className="p-3 bg-purple-50 rounded-lg border border-blue-100 dark:bg-[#252526] dark:border-gray-50/10">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-semibold text-blue-900">AI Verdict:</span>
-              <Badge variant="outline" className="text-xs">
+              <span className="text-sm font-semibold text-blue-900 dark:text-white">AI Verdict:</span>
+              <Badge variant="outline" className="text-xs dark:text-white">
                 {claim.aiVerdict.confidence}% confidence
               </Badge>
             </div>
-            <p className="text-xs text-gray-700 line-clamp-2">
+            <p className="text-xs text-gray-700 line-clamp-2 dark:text-gray-400">
               {claim.aiVerdict.reasoning}
             </p>
           </div>
         )}
 
         {claim.resolution && (
-          <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-sm font-semibold text-green-900 mb-1">
+          <div className="p-3 bg-green-50 rounded-lg border border-green-200 dark:bg-[#252526] dark:border-gray-50/10 ">
+            <div className="text-sm font-semibold text-green-600 mb-1">
               Resolution: {claim.resolution.outcome}
             </div>
-            <div className="text-xs text-gray-700">
+            <div className="text-xs text-gray-700 dark:text-gray-400">
               Weighted Score: {(claim.resolution.weightedTruthScore * 100).toFixed(1)}%
             </div>
           </div>

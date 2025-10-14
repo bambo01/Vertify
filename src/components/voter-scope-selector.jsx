@@ -149,9 +149,9 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
   };
 
   return (
-    <Card className="border-2 border-blue-200">
+    <Card className="border-2 border-blue-200 ">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 dark:text-white">
           <Users className="h-5 w-5 text-blue-600" />
           Voter Scope & Eligibility
         </CardTitle>
@@ -168,7 +168,7 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
               <RadioGroupItem value="everyone" id="everyone" />
               <Label htmlFor="everyone" className="flex-1 cursor-pointer">
                 <div className="font-medium">Everyone</div>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
                   Any verified user can vote (no restrictions)
                 </div>
               </Label>
@@ -178,7 +178,7 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
               <RadioGroupItem value="custom" id="custom" />
               <Label htmlFor="custom" className="flex-1 cursor-pointer">
                 <div className="font-medium">Custom (Intersection Logic)</div>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
                   Voters must satisfy ALL selected filters below
                 </div>
               </Label>
@@ -189,13 +189,13 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
         {!scope.everyone && (
           <div className="space-y-4 pl-4 border-l-2 border-blue-200">
             {/* Category Requirement */}
-            <div className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
+            <div className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg dark:bg-[#252526]">
               <Checkbox
                 id="requireCategory"
                 checked={!!scope.requireCategory}
                 onCheckedChange={handleCategoryRequirementChange}
               />
-              <div className="flex-1">
+              <div className="flex-1 ">
                 <Label
                   htmlFor="requireCategory"
                   className="cursor-pointer font-medium flex items-center gap-2"
@@ -203,7 +203,7 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
                   <Shield className="h-4 w-4 text-blue-600" />
                   Require {claimCategory} Category Badge
                 </Label>
-                <p className="text-xs text-gray-600 mt-1">
+                <p className="text-xs text-gray-600 mt-1 dark:text-gray-400">
                   Only users with a {claimCategory} badge can vote
                 </p>
               </div>
@@ -219,7 +219,7 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
                 {ROLES.map((role) => (
                   <div
                     key={role}
-                    className="flex items-center space-x-2 p-2 rounded border hover:bg-gray-50"
+                    className="flex items-center space-x-2 p-2 rounded border hover:bg-gray-50 dark:hover:bg-gray-50/10"
                   >
                     <Checkbox
                       id={`role-filter-${role}`}
@@ -345,8 +345,8 @@ export function VoterScopeSelector({ claimCategory, voterScope, onChange }) {
                 <div className="flex items-start gap-2">
                   <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm space-y-2">
-                    <p className="font-semibold">Examples:</p>
-                    <ul className="space-y-1 text-gray-700">
+                    <p className="font-semibold dark:text-white">Examples:</p>
+                    <ul className="space-y-1 text-gray-700 dark:text-gray-400">
                       <li>
                         • <strong>Politics—Cebu gov't:</strong> Geo=Cebu City
                         (required). A user in Pampanga is ineligible.

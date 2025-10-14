@@ -256,21 +256,21 @@ export default function VotePage() {
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
-              <CardTitle className="text-2xl sm:text-3xl">Vote on Claim</CardTitle>
+              <CardTitle className="text-2xl sm:text-3xl dark:text-white">Vote on Claim</CardTitle>
               <BadgeDisplay badge={categoryBadge} showDetails />
             </div>
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
               <Shield className="h-4 w-4" />
               <span>Max stake: {maxStake} ETH | Weight: {BADGE_REQUIREMENTS[categoryBadge.tier].weightMultiplier}x</span>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="p-4 bg-gray-50 rounded-lg">
+            <div className="p-4 bg-gray-50 rounded-lg dark:bg-[#252526]">
               <div className="flex items-center gap-2 mb-2">
                 <Badge>{claim.category}</Badge>
               </div>
-              <h3 className="font-semibold text-base sm:text-lg mb-2">{claim.title}</h3>
-              <p className="text-sm sm:text-base text-gray-700 mb-3">{claim.summary}</p>
+              <h3 className="font-semibold text-base sm:text-lg mb-2 dark:text-white">{claim.title}</h3>
+              <p className="text-sm sm:text-base text-gray-700 mb-3 dark:text-white">{claim.summary}</p>
               <a
                 href={claim.url}
                 target="_blank"
@@ -363,8 +363,8 @@ export default function VotePage() {
                   </AlertDescription>
                 </Alert>
 
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-semibold mb-2 text-sm sm:text-base">Current Votes</h4>
+                <div className="p-4 bg-blue-50 rounded-lg dark:bg-[#252526]">
+                  <h4 className="font-semibold mb-2 text-sm sm:text-base dark:text-white">Current Votes</h4>
                   <div className="flex flex-col sm:flex-row justify-between gap-2">
                     <Badge className="bg-green-100 text-green-800 text-xs sm:text-sm">
                       Truth: {claim.truthVotes} votes ({claim.truthStake.toFixed(3)} ETH)

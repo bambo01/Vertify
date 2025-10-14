@@ -39,11 +39,13 @@ export function GeoSelector({ country, province, city, onChange }) {
       <CardContent className="pt-6">
         <div className="flex items-center gap-2 mb-4">
           <MapPin className="h-5 w-5 text-blue-600" />
-          <Label className="text-base font-semibold">Location (City-level only)</Label>
+          <Label className="text-base font-semibold dark:text-white">Location (City-level only)</Label>
         </div>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="country">Country *</Label>
+            <Label 
+            htmlFor="country"
+            className='dark:text-gray-400'>Country *</Label>
             <Select
               value={country}
               onValueChange={(value) => {
@@ -65,7 +67,8 @@ export function GeoSelector({ country, province, city, onChange }) {
 
           {provinces.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="province">Province/State *</Label>
+              <Label htmlFor="province"
+               className='dark:text-gray-400'>Province/State *</Label>
               <Select
                 value={province}
                 onValueChange={(value) => {
@@ -88,7 +91,8 @@ export function GeoSelector({ country, province, city, onChange }) {
 
           {cities.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="city">City *</Label>
+              <Label htmlFor="city"
+               className='dark:text-gray-400'>City *</Label>
               <Select
                 value={city}
                 onValueChange={(value) => {

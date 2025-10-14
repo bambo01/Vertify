@@ -60,7 +60,7 @@ export default function ExplorePage() {
     <div className="container mx-auto px-4 py-12">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-4">Explore Claims</h1>
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 mb-6 dark:text-white">
           Browse community-submitted claims by category and vote with evidence
         </p>
         
@@ -77,7 +77,7 @@ export default function ExplorePage() {
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Filter className="h-4 w-4 text-gray-600" />
-            <span className="text-sm font-medium text-gray-600">Filter by Category:</span>
+            <span className="text-sm font-medium text-gray-600 dark:text-white">Filter by Category:</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

@@ -139,14 +139,14 @@ export default function SubmitPage() {
           <div className="text-center mb-6 sm:mb-8">
             <FileText className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4 text-blue-600" />
             <h1 className="text-3xl sm:text-4xl font-bold mb-2">Submit a Claim</h1>
-            <p className="text-sm sm:text-base text-gray-600">
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
               Post a news article or claim for community fact-checking
             </p>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-xl sm:text-2xl">Claim Details</CardTitle>
+              <CardTitle className="text-xl sm:text-2xl dark:text-white">Claim Details</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -224,10 +224,10 @@ export default function SubmitPage() {
 
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="pt-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">
+                    <p className="text-sm font-semibold text-gray-700 mb-2 dark:text-white">
                       What happens next:
                     </p>
-                    <ul className="text-xs sm:text-sm text-gray-700 space-y-1">
+                    <ul className="text-xs sm:text-sm text-gray-700 space-y-1 dark:text-gray-400">
                       <li>• Your claim will be anchored on Base blockchain</li>
                       <li>• Eligible voters have 45 seconds to fact-check with evidence</li>
                       <li>• AI will analyze the claim after voting ends</li>

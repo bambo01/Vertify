@@ -149,11 +149,11 @@ export default function DashboardPage() {
         <div className='flex justify-between'>
           <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">{profile.displayName}&apos;s Dashboard</h1>
-          <p className="text-gray-600">Track your fact-checking performance and earn badges</p>
+          <p className="text-gray-600 dark:text-gray-400">Track your fact-checking performance and earn badges</p>
         </div>
           <Link href="/submit">
               <Button
-                className="gap-2 bg-blue-600"
+                className="gap-2 bg-[#44ADFF]"
               >
                 <Plus className="h-4 w-4" />
                 Submit Claim
@@ -166,9 +166,9 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <Target className="h-8 w-8 text-purple-600" />
-                <span className="text-3xl font-bold">{(profile.overallTruthScore * 100).toFixed(0)}%</span>
+                <span className="text-3xl font-bold dark:text-white">{(profile.overallTruthScore * 100).toFixed(0)}%</span>
               </div>
-              <p className="text-gray-600">Truth Score</p>
+              <p className="text-gray-600 dark:text-gray-400">Truth Score</p>
               <Progress value={profile.overallTruthScore * 100} className="mt-2" />
             </CardContent>
           </Card>
@@ -177,9 +177,9 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <VoteIcon className="h-8 w-8 text-green-600" />
-                <span className="text-3xl font-bold">{userVotes.length}</span>
+                <span className="text-3xl font-bold dark:text-white">{userVotes.length}</span>
               </div>
-              <p className="text-gray-600">Total Votes</p>
+              <p className="text-gray-600 dark:text-gray-400">Total Votes</p>
               <p className="text-sm text-green-600 mt-1">{correctVotes} correct</p>
             </CardContent>
           </Card>
@@ -188,9 +188,9 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <Award className="h-8 w-8 text-yellow-600" />
-                <span className="text-3xl font-bold">{accuracy.toFixed(0)}%</span>
+                <span className="text-3xl font-bold dark:text-white">{accuracy.toFixed(0)}%</span>
               </div>
-              <p className="text-gray-600">Vote Accuracy</p>
+              <p className="text-gray-600 dark:text-gray-400">Vote Accuracy</p>
             </CardContent>
           </Card>
 
@@ -198,29 +198,29 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <TrendingUp className="h-8 w-8 text-blue-600" />
-                <span className="text-3xl font-bold">{totalEarnings.toFixed(3)}</span>
+                <span className="text-3xl font-bold dark:text-white">{totalEarnings.toFixed(3)}</span>
               </div>
-              <p className="text-gray-600">ETH Earned</p>
+              <p className="text-gray-600 dark:text-gray-400">ETH Earned</p>
             </CardContent>
           </Card>
         </div>
 
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 dark:text-white">
               <Zap className="h-6 w-6 text-yellow-500" />
               Your Category Badges
             </CardTitle>
           </CardHeader>
           <CardContent>
             {profile.badges.length === 0 ? (
-              <p className="text-gray-500">No badges yet. Vote on claims to start earning!</p>
+              <p className="text-gray-500 dark:text-white">No badges yet. Vote on claims to start earning!</p>
             ) : (
               <div className="space-y-6">
                 {profile.badges.map((badge) => {
                   const badgeProgress = getBadgeProgress(badge);
                   return (
-                    <div key={badge.category} className="p-4 bg-gray-50 rounded-lg">
+                    <div key={badge.category} className="p-4 bg-gray-50 rounded-lg dark:bg-[#252526]">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <Badge className={
@@ -232,22 +232,23 @@ export default function DashboardPage() {
                           }>
                             {badge.category} {badge.tier}
                           </Badge>
-                          <span className="text-sm text-gray-600">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
                             {badge.totalVotes} votes • {badge.correctVotes} correct
                           </span>
                         </div>
-                        <Badge variant="outline">
+                        <Badge 
+                          variant="outline">
                           {(badge.truthScore * 100).toFixed(0)}% score
                         </Badge>
                       </div>
                       
                       <div className="space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Progress to {badgeProgress.nextTier}</span>
-                          <span className="font-medium">{badgeProgress.progress.toFixed(0)}%</span>
+                          <span className="text-gray-600 dark:text-white">Progress to {badgeProgress.nextTier}</span>
+                          <span className="font-medium dark:text-white">{badgeProgress.progress.toFixed(0)}%</span>
                         </div>
                         <Progress value={badgeProgress.progress} />
-                        <p className="text-xs text-gray-500">{badgeProgress.requirement}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{badgeProgress.requirement}</p>
                       </div>
                     </div>
                   );
