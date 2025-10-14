@@ -8,6 +8,19 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // ⬇️ Use Poppins (next/font) as the default sans font
+      fontFamily: {
+        sans: [
+          "var(--font-poppins)",
+          "ui-sans-serif",
+          "system-ui",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "Noto Sans",
+        ],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

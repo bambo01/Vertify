@@ -1,11 +1,16 @@
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/providers/wallet-provider";
 import { Navbar } from "@/components/navbar";
 import { Toaster } from "@/components/ui/sonner";
 import FarcasterWrapper from "@/components/FarcasterWrapper";
+import { Poppins } from "next/font/google";
 
-const inter = Inter({ subsets: ["latin"] });
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-poppins",
+  display: "swap",
+});
 
 export default function RootLayout({
   children,
@@ -14,7 +19,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      {/* Use the CSS variable + Tailwind's font-sans */}
+      <body className={`${poppins.variable} font-sans`}>
         <WalletProvider>
           <Navbar />
           <main className="min-h-screen bg-white">
