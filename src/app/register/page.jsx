@@ -81,7 +81,7 @@ export default function RegisterPage() {
     );
 
   const onPickImage = (e, setFile, setPreview, setError) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0] || null;
     if (!file) {
       setFile(null);
       setPreview("");
@@ -103,7 +103,7 @@ export default function RegisterPage() {
   const readAsDataURL = (file) =>
     new Promise((resolve, reject) => {
       const r = new FileReader();
-      r.onload = () => resolve(r.result);
+      r.onload = () => resolve(String(r.result));
       r.onerror = reject;
       r.readAsDataURL(file);
     });
@@ -239,17 +239,10 @@ export default function RegisterPage() {
     if (selectedCategories.length === 0)
       return toast.error("Please select at least one category");
 
-    const badges = selectedCategories.map((category) => ({
-      category,
-      tier: "silver",
-      truthScore: 0,
-      totalVotes: 0,
-      correctVotes: 0,
-      createdAt: Date.now(),
-      lastUpgradeAt: Date.now(),
-    }));
+    // No category badges at signup; created after admin approval + user claim
+    const initialBadges = [];
 
-    // Prepare images as data URLs
+    // Prepare images as data URLs (local/offline)
     let studentImageDataUrl = null;
     let prcImageDataUrl = null;
 
@@ -262,16 +255,18 @@ export default function RegisterPage() {
       return toast.error("Failed to read image(s). Please try again.");
     }
 
-    // Build roleBadges with per-role verification
+    // Build roleBadges with per-role verification + issuance state
     const roleBadges = selectedRoles.map((role) => {
+      const badgeState = { status: "not_eligible" };
+
       if (role === STUDENT_ROLE) {
-        // Student ID required for Student role
         return {
           role,
           tier: "silver",
           verified: false,
           issuerRef: "self-attested",
           createdAt: Date.now(),
+          badge: badgeState,
           verification: {
             method: "student_id",
             idType: "Student ID",
@@ -299,6 +294,7 @@ export default function RegisterPage() {
             verified: false,
             issuerRef: "self-attested",
             createdAt: Date.now(),
+            badge: badgeState,
             verification: {
               method: "linkedin",
               submittedAt: Date.now(),
@@ -307,7 +303,6 @@ export default function RegisterPage() {
             },
           };
         } else {
-          // prc_or_linkedin in the other block
           if (methodMain === "linkedin") {
             return {
               role,
@@ -315,6 +310,7 @@ export default function RegisterPage() {
               verified: false,
               issuerRef: "self-attested",
               createdAt: Date.now(),
+              badge: badgeState,
               verification: {
                 method: "linkedin",
                 submittedAt: Date.now(),
@@ -330,6 +326,7 @@ export default function RegisterPage() {
             verified: false,
             issuerRef: "self-attested",
             createdAt: Date.now(),
+            badge: badgeState,
             verification: {
               method: "prc_id",
               idType: "PRC ID",
@@ -357,6 +354,7 @@ export default function RegisterPage() {
             verified: false,
             issuerRef: "self-attested",
             createdAt: Date.now(),
+            badge: badgeState,
             verification: {
               method: "linkedin",
               submittedAt: Date.now(),
@@ -371,6 +369,7 @@ export default function RegisterPage() {
           verified: false,
           issuerRef: "self-attested",
           createdAt: Date.now(),
+          badge: badgeState,
           verification: {
             method: "prc_id",
             idType: "PRC ID",
@@ -396,6 +395,7 @@ export default function RegisterPage() {
         verified: false,
         issuerRef: "self-attested",
         createdAt: Date.now(),
+        badge: badgeState,
         verification: {
           method: "linkedin",
           submittedAt: Date.now(),
@@ -405,9 +405,8 @@ export default function RegisterPage() {
       };
     });
 
-    // 🔁 NEW: include full idImage object in the summary (not just hasImage)
+    // Summary for admin UI
     const roleVerificationSummary = (() => {
-      // helpers to build idImage objects
       const studentIdImage =
         studentImageDataUrl && studentImageFile
           ? {
@@ -477,6 +476,8 @@ export default function RegisterPage() {
       displayName: displayName.trim(),
       registeredAt: Date.now(),
 
+      status: "pending", // global profile state
+
       // Location
       city: geo.city,
       province: geo.province,
@@ -486,26 +487,25 @@ export default function RegisterPage() {
       roles: selectedRoles,
       roleBadges,
 
-      // Summary now includes idImage objects
+      // Summary (for admin view)
       roleVerificationSummary,
 
       // Misc
       residencyAttestationRef: `mock-attestation-${Date.now()}`,
 
-      // Categories
+      // Categories only; badges are empty until approval+claim
       categories: selectedCategories,
-      badges,
+      badges: initialBadges,
 
-      // Stats
+      // Stats (initial)
       overallTruthScore: 0.5,
       totalStaked: 0,
       totalEarned: 0,
     };
 
     try {
-      console.log("My Profile:", profile);
       await storage.saveUserProfile(profile);
-      toast.success("Registration complete! Welcome to TruthChain 🎉");
+      toast.success("Registration submitted. Your account is pending review.");
       router.push("/dashboard");
     } catch (error) {
       console.error("Registration error:", error);
@@ -546,7 +546,6 @@ export default function RegisterPage() {
         const otherInvalid = !isValidLinkedIn(linkedinUrlMain);
         return studentInvalid || otherInvalid;
       }
-      // prc_or_linkedin on other block
       const otherInvalid =
         (methodMain === "linkedin" && !isValidLinkedIn(linkedinUrlMain)) ||
         (methodMain === "prc" &&
@@ -583,14 +582,10 @@ export default function RegisterPage() {
         <div className="mb-6 sm:mb-8 overflow-x-auto pb-2">
           <div className="flex justify-center items-center gap-2 sm:gap-4 min-w-max">
             <div
-              className={`flex items-center gap-2 ${
-                step >= 1 ? "text-[#44ADFF]" : "text-gray-400"
-              }`}
+              className={`flex items-center gap-2 ${step >= 1 ? "text-[#44ADFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 1 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
-                }`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 1 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 {step > 1 ? (
                   <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -604,14 +599,10 @@ export default function RegisterPage() {
             </div>
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
-              className={`flex items-center gap-2 ${
-                step >= 2 ? "text-[#44ADFF]" : "text-gray-400"
-              }`}
+              className={`flex items-center gap-2 ${step >= 2 ? "text-[#44ADFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 2 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
-                }`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 2 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 {step > 2 ? (
                   <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -625,14 +616,10 @@ export default function RegisterPage() {
             </div>
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
-              className={`flex items-center gap-2 ${
-                step >= 3 ? "text-[#44ADFF]" : "text-gray-400"
-              }`}
+              className={`flex items-center gap-2 ${step >= 3 ? "text-[#44ADFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 3 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
-                }`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 3 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 {step > 3 ? (
                   <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -646,14 +633,10 @@ export default function RegisterPage() {
             </div>
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
-              className={`flex items-center gap-2 ${
-                step >= 4 ? "text-[#44ADFF]" : "text-gray-400"
-              }`}
+              className={`flex items-center gap-2 ${step >= 4 ? "text-[#44ADFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${
-                  step >= 4 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"
-                }`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 4 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
@@ -753,7 +736,7 @@ export default function RegisterPage() {
                     <CardContent className="pt-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <IdCard className="h-5 w-5 text-purple-600" />
-                        <h3 className="font-semibold text-sm sm:text-base">
+                        <h3 className="font-semibold text-sm sm:text-base dark:text-white">
                           Student ID Verification (Required)
                         </h3>
                       </div>
@@ -858,7 +841,7 @@ export default function RegisterPage() {
                   otherBlockMode === "prc_or_linkedin" && (
                     <Card className="bg-amber-50 border-amber-200">
                       <CardContent className="pt-4 space-y-4">
-                        <h3 className="font-semibold text-sm sm:text-base">
+                        <h3 className="font-semibold text-sm sm:text-base dark:text-white">
                           Verification for Other Roles
                         </h3>
                         <div className="flex flex-wrap gap-2">
@@ -1142,16 +1125,17 @@ export default function RegisterPage() {
                     </h3>
                     <div className="text-xs sm:text-sm text-gray-700 space-y-2 dark:text-gray-400">
                       <p>
-                        <strong>Silver Badge (Starting):</strong> Max 0.002 ETH
-                        per vote, 1.0x weight
+                        <strong>Silver Badge (Starting):</strong> unlocked after
+                        admin approval + claim. Max 0.002 ETH per vote, 1.0x
+                        weight
                       </p>
                       <p>
-                        <strong>Gold Badge:</strong> Requires 75% accuracy + 20
-                        votes. Max 0.005 ETH, 1.3x weight
+                        <strong>Gold Badge:</strong> 75% accuracy + 20 votes.
+                        Max 0.005 ETH, 1.3x weight
                       </p>
                       <p>
-                        <strong>Expert Badge:</strong> Requires 85% accuracy +
-                        100 votes. Max 0.01 ETH, 1.6x weight
+                        <strong>Expert Badge:</strong> 85% accuracy + 100 votes.
+                        Max 0.01 ETH, 1.6x weight
                       </p>
                     </div>
                   </CardContent>
@@ -1163,7 +1147,6 @@ export default function RegisterPage() {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
               {step > 1 && (
                 <Button
-                
                   onClick={() => setStep(step - 1)}
                   className="w-full sm:flex-1 order-2 sm:order-1 bg-[#3e3e42]"
                 >
@@ -1178,7 +1161,7 @@ export default function RegisterPage() {
                   (step === 2 &&
                     (!geo.country || !geo.province || !geo.city)) ||
                   (step === 3 && step3Disabled) ||
-                  (step === 4 && selectedCategories.length === 0)
+                    (step === 4 && selectedCategories.length === 0)
                 }
               >
                 {step === 4 ? "Complete Registration" : "Continue"}

@@ -13,7 +13,7 @@ const VOTES_KEY  = "truthchain_votes";
 const USERS_KEY  = "truthchain_users";
 
 // Toggle true for offline/localStorage-only development
-const USE_LOCALSTORAGE = true;
+const USE_LOCALSTORAGE = false;
 
 /* ---------------------------- helpers ---------------------------- */
 
@@ -321,71 +321,167 @@ export const storage = {
     }
   },
 
-  // -------------------- Save / Update Profile --------------------
-  async saveUserProfile(profile) {
-    if (typeof window === "undefined") return profile;
+// -------------------- Save / Update Profile --------------------
+async saveUserProfile(profile) {
+  if (typeof window === "undefined") return profile;
 
-    // ---------- localStorage mode ----------
-    if (USE_LOCALSTORAGE) {
-      const users = await this.getUsers();
-      const index = users.findIndex(
-        (u) =>
-          u.address?.toLowerCase() === profile.address?.toLowerCase() ||
-          u.walletAddress?.toLowerCase() === profile.walletAddress?.toLowerCase()
-      );
-      if (index !== -1) users[index] = profile; else users.push(profile);
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
-      return profile;
+  // ---------- localStorage mode ----------
+  if (USE_LOCALSTORAGE) {
+    const users = await this.getUsers();
+    const index = users.findIndex(
+      (u) =>
+        u.address?.toLowerCase() === profile.address?.toLowerCase() ||
+        u.walletAddress?.toLowerCase() === profile.walletAddress?.toLowerCase()
+    );
+    if (index !== -1) users[index] = profile; else users.push(profile);
+
+    console.log("[storage.saveUserProfile] (LOCAL) saving user:", {
+      address: profile.address || profile.walletAddress,
+      status: profile.status,
+      roles: profile.roles,
+      categories: profile.categories,
+      badgesCount: Array.isArray(profile.badges) ? profile.badges.length : 0,
+      roleBadgesCount: Array.isArray(profile.roleBadges) ? profile.roleBadges.length : 0,
+    });
+
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    return profile;
+  }
+
+  // ---------- backend mode ----------
+  try {
+    const wallet = String(profile.address || profile.walletAddress || "").toLowerCase();
+
+    // Build & sanitize full profile (removes File/Blob and dataUrl)
+    const toSend = deepSanitizeProfile({
+      ...profile,
+      walletAddress: wallet, // normalize
+    });
+    delete toSend.address; // avoid duplicate field server-side
+
+    // Pull out arrays that we DO NOT include in /auth/register by default
+    const badges      = Array.isArray(toSend.badges) ? toSend.badges : [];
+    const categoriesIn = Array.isArray(toSend.categories) ? toSend.categories : [];
+    const roleBadges  = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
+    delete toSend.badges;
+    delete toSend.categories;
+    delete toSend.roleBadges;
+
+    // Derive category names (unique strings) for persistence
+    const categoriesPlain = Array.from(
+      new Set(
+        (categoriesIn.length ? categoriesIn : badges.map((b) => b?.category))
+          .map((c) => (c == null ? "" : String(c).trim()))
+          .filter(Boolean)
+      )
+    );
+
+    // Build derived category "badge stubs" you want to preview/send
+    const derivedCategoryBadges = categoriesPlain.map((cat) => ({
+      category: cat,
+      tier: "silver",    // starting tier
+      status: "pending", // or "pending_mint"
+    }));
+
+    // If your backend expects/accepts this field, uncomment to send it:
+    // toSend.initialBadges = derivedCategoryBadges;
+
+    // Lightweight preview of roleBadges for logs
+    const roleBadgesPreview = roleBadges.map((rb) => ({
+      role: rb.role,
+      tier: rb.tier,
+      verified: !!rb.verified,
+      verification: rb.verification
+        ? {
+            method: rb.verification.method,
+            idType: rb.verification.idType,
+            idLast4: rb.verification.idLast4,
+            linkedinUrl: rb.verification.linkedinUrl,
+            status: rb.verification.status,
+          }
+        : undefined,
+      badge: rb.badge ? { status: rb.badge.status, tokenId: rb.badge.tokenId } : undefined,
+    }));
+
+    // What we're actually sending to /auth/register (preview only)
+    const registerPayloadPreview = {
+      walletAddress: toSend.walletAddress,
+      displayName: toSend.displayName,
+      status: toSend.status, // e.g. "pending" for new registrations
+      roles: toSend.roles,
+      city: toSend.city,
+      province: toSend.province,
+      country: toSend.country,
+      roleVerificationSummary: toSend.roleVerificationSummary || undefined,
+      registeredAt: toSend.registeredAt,
+      residencyAttestationRef: toSend.residencyAttestationRef,
+      overallTruthScore: toSend.overallTruthScore,
+      totalStaked: toSend.totalStaked,
+      totalEarned: toSend.totalEarned,
+
+      // ⬇️ now objects: { category, tier, status }
+      __derivedCategories__: derivedCategoryBadges,
+    };
+
+    console.log("[storage.saveUserProfile] → /auth/register payload (preview)", registerPayloadPreview);
+
+    // Send to /auth/register
+    const savedUser = await apiClient.register(toSend);
+    console.log("[storage.saveUserProfile] ← /auth/register response", savedUser);
+
+    // Persist badges separately (server can also derive categories from them)
+    if (badges.length > 0) {
+      console.log(`[storage.saveUserProfile] → /users/${wallet}/badges payload`, badges);
+      const badgesResp = await apiClient.updateUserBadges(wallet, badges);
+      console.log(`[storage.saveUserProfile] ← /users/${wallet}/badges response`, badgesResp);
+    } else {
+      console.log("[storage.saveUserProfile] (no badges to persist)");
     }
 
-    // ---------- backend mode ----------
-    try {
-      const wallet = String(profile.address || profile.walletAddress || "").toLowerCase();
-
-      // Build & sanitize full profile
-      const toSend = deepSanitizeProfile({
-        ...profile,
-        walletAddress: wallet, // normalize
-      });
-      delete toSend.address; // avoid duplicate field
-
-      // ⬇️ Extract fields that cause conflicts in /auth/register
-      const badges     = Array.isArray(toSend.badges) ? toSend.badges : [];
-      const categories = Array.isArray(toSend.categories) ? toSend.categories : [];
-      const roleBadges = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
-      delete toSend.badges;
-      delete toSend.categories;
-      delete toSend.roleBadges;
-
-      console.log("[storage.saveUserProfile] → /auth/register payload", stripUndefinedShallow(toSend));
-      const savedUser = await apiClient.register(toSend);
-      console.log("[storage.saveUserProfile] ← /auth/register response", savedUser);
-
-      // Persist badges separately (server can derive categories)
-      if (badges.length > 0) {
-        console.log(`[storage.saveUserProfile] → /users/${wallet}/badges payload`, badges);
-        const badgesResp = await apiClient.updateUserBadges(wallet, badges);
-        console.log(`[storage.saveUserProfile] ← /users/${wallet}/badges response`, badgesResp);
-      } else {
-        console.log("[storage.saveUserProfile] (no badges to persist)");
-      }
-
-      // (Optional future: categories/roleBadges endpoints)
-      // if (categories.length) await apiClient.updateUserCategories(wallet, categories);
-      // if (roleBadges.length) await apiClient.upsertVerifications(wallet, { roleBadges });
-
-      const normalized = {
-        ...profile,
-        ...savedUser,
-        address: savedUser.walletAddress || wallet,
-      };
-      console.log("[storage.saveUserProfile] returning normalized profile ←", normalized);
-      return normalized;
-    } catch (error) {
-      console.error("[storage.saveUserProfile] ERROR", { status: error?.status }, error?.data || error);
-      throw error;
+    // Persist plain category names explicitly
+    if (categoriesPlain.length > 0) {
+      console.log(`[storage.saveUserProfile] → /users/${wallet}/categories payload`, categoriesPlain);
+      const categoriesResp = await apiClient.updateUserCategories(wallet, categoriesPlain);
+      console.log(`[storage.saveUserProfile] ← /users/${wallet}/categories response`, categoriesResp);
+    } else {
+      console.log("[storage.saveUserProfile] (no categories to persist)");
     }
-  },
+
+    // (Optional future: roleBadges endpoint)
+    // if (roleBadges.length) await apiClient.upsertVerifications(wallet, { roleBadges });
+
+    const normalized = {
+      ...profile,
+      ...savedUser,
+      address: savedUser.walletAddress || wallet,
+      // Prefer categories from server; otherwise fall back to derived ones
+      categories:
+        Array.isArray(savedUser?.categories) && savedUser.categories.length
+          ? savedUser.categories
+          : categoriesPlain,
+    };
+
+    // Final summary log
+    console.log("[storage.saveUserProfile] SUMMARY", {
+      savedForWallet: normalized.address,
+      sentToRegisterKeys: Object.keys(toSend),
+      categoriesSent: categoriesPlain,
+      categoriesInResponse: normalized.categories,
+      badgesCount: badges.length,
+      roleBadgesCount: roleBadges.length,
+      roleBadgesPreview,
+      // show what we derived for initial badge stubs
+      derivedCategoryBadges,
+    });
+
+    return normalized;
+  } catch (error) {
+    console.error("[storage.saveUserProfile] ERROR", { status: error?.status }, error?.data || error);
+    throw error;
+  }
+},
+
+
 
   async updateUserProfile(address, updates) {
     if (typeof window === "undefined") return null;

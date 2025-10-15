@@ -9,10 +9,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-[#1e1e1e] text-white hover:bg-black/90",
+        default:
+          "bg-[#1e1e1e] text-white hover:bg-gray-900/10 hover:text-white",
         navbar: "text-[#3563E9]",
         secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
-        outline: "border bg-[#44ADFF]  hover:bg-gray-50",
+        outline: "border bg-[#44ADFF]  hover:opacity-90",
         ghost: "hover:bg-gray-50 dark:hover:bg-gray-50/10",
         link: "underline underline-offset-4",
       },

@@ -19,21 +19,16 @@ import {
 import Link from "next/link";
 import { sdk } from "@farcaster/miniapp-sdk";
 
-/** Footer theme toggle: toggles `dark` on <html> and persists in localStorage */
 function ThemeToggle() {
   const getInitial = () => {
-    if (typeof window === "undefined") return false;
+    if (typeof window === "undefined") return false; // default to light during SSR
     const stored = localStorage.getItem("theme");
-    if (stored) return stored === "dark";
-    return (
-      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false
-    );
+    return stored === "dark"; // only dark if explicitly stored
   };
 
   const [isDark, setIsDark] = useState(getInitial);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
     const root = document.documentElement;
     if (isDark) {
       root.classList.add("dark");
@@ -107,10 +102,11 @@ export default function HomePage() {
         />
         {/* Your content */}
         <div className="text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
-          <h1 className="text-5xl md:text-5xl font-medium mb-6 bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-[#5EC7F3] dark:to-[#FFFFFF] bg-clip-text text-transparent">
-            Transforming Fact-Checking into a Fun and Rewarding Experience
+          <h1 className="text-xl md:text-5xl font-medium mb-6 bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-[#5EC7F3] dark:to-[#FFFFFF] bg-clip-text text-transparent">
+            Revolutionizing Trust and Security with Next-Gen Blockchain
+            Solutions
           </h1>
-          <p className="text-lg font-light mb-5">
+          <p className="text-sm md:text-lg font-light mb-5">
             Helping people trust what they read through fact-checking and earn
             for being accurate — secured on Base Ethereum L2.
           </p>
@@ -119,7 +115,7 @@ export default function HomePage() {
             <Link href="/explore">
               <Button
                 size="lg"
-                className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3]"
+                className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-80"
               >
                 Explore Claims
               </Button>
@@ -311,35 +307,71 @@ export default function HomePage() {
           {/* ✅ No white board wrapper */}
           <div className="grid gap-6 md:grid-cols-3">
             <Card className="bg-green-50/20 border border-emerald-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center">
-                <h3 className="text-base font-semibold mb-2 dark:text-white">
-                  Accuracy Pays
-                </h3>
-                <p className="text-[13px] text-gray-800 dark:text-blue-100/90">
-                  Correct voters and reliable posters earn rewards
-                </p>
+              <CardContent className="pt-6 text-center rounded-2xl bg-green-300/10 dark:bg-[#1A2745] p-5 text-[#0e2346] shadow-xl shadow-black/20">
+                <div className="flex flex-col justify-center items-center">
+                  <img
+                    src="/Accuracy.webp"
+                    alt=""
+                    className="w-12 mb-2 py-2 dark:hidden"
+                  />{" "}
+                  <img
+                    src="/AccuracyW.webp"
+                    alt=""
+                    className="w-12 mb-2 py-2 hidden dark:block"
+                  />
+                  <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white ">
+                    Accuracy Pays
+                  </h3>
+                  <p className="text-md text-gray-600 dark:text-gray-400">
+                    Correct voters and reliable posters earn rewards
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-blue-50/20 border border-blue-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center">
-                <h3 className="text-base font-semibold mb-2 dark:text-white">
-                  Proof, Not Promises
-                </h3>
-                <p className="text-[13px] text-gray-800 dark:text-blue-100/90">
-                  Outcomes and hashes are anchored on-chain
-                </p>
+            <Card className="bg-blue-50/20 border border-blue-300/50 backdrop-blur-sm ">
+              <CardContent className="pt-6 text-center rounded-2xl bg-blue-200/20 dark:bg-[#1A2745] p-5 text-[#0e2346] shadow-xl shadow-black/10">
+                <div className="flex flex-col justify-center items-center ">
+                  <img
+                    src="/NFTW.webp"
+                    alt=""
+                    className="w-12 mb-2 py-2 dark:hidden"
+                  />{" "}
+                  <img
+                    src="/NFT.webp"
+                    alt=""
+                    className="w-12 mb-2 py-2 hidden dark:block"
+                  />
+                  <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white">
+                    Proof, Not Promises
+                  </h3>
+                  <p className="text-md text-gray-600 dark:text-gray-400 ">
+                    Outcomes and hashes are anchored on-chain
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
             <Card className="bg-fuchsia-50/20 border border-fuchsia-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center">
-                <h3 className="text-base font-semibold mb-2 dark:text-white">
-                  Low Cost, High Trust
-                </h3>
-                <p className="text-[13px] text-gray-800 dark:text-blue-100/90">
-                  Base L2 keeps anchoring cent-level per claim
-                </p>
+              <CardContent className="pt-6 text-center rounded-2xl bg-purple-300/10 dark:bg-[#1A2745] p-5 text-[#0e2346] shadow-xl shadow-black/20">
+                <div className="flex flex-col justify-center items-center">
+                  <img
+                    src="/low.webp"
+                    alt=""
+                    className="w-12 mb-2 py-2 dark:hidden"
+                  />{" "}
+                  <img
+                    src="/lowW.webp"
+                    alt=""
+                    className="w-12 mb-2 py-2 hidden dark:block"
+                  />
+                  <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white">
+                    Low Cost, High Trust
+                  </h3>
+                  <p className="text-md text-gray-600 dark:text-gray-400">
+                    Base L2 keeps anchoring cent-level per claim
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </div>

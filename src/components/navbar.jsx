@@ -17,7 +17,7 @@ export function Navbar() {
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-2xl font-bold">
             
-            <span className="text-[#227DC3] dark:text-white font-semibold text-transparent">
+            <span className="text-[#227DC3] dark:text-white font-semibold ">
               Vertify
             </span>
           </Link>
@@ -28,7 +28,7 @@ export function Navbar() {
                 variant={isActive('/') ? 'navbar' : 'ghost'}
                 className="gap-2"
               >
-                <Home className="h-4 w-4" />
+                
                 Home
               </Button>
             </Link>
@@ -37,7 +37,7 @@ export function Navbar() {
                 variant={isActive('/explore') ? 'navbar' : 'ghost'}
                 className="gap-2"
               >
-                <Search className="h-4 w-4" />
+                
                 Explore
               </Button>
             </Link>
@@ -55,7 +55,7 @@ export function Navbar() {
                 variant={isActive('/dashboard') ? 'navbar' : 'ghost'}
                 className="gap-2"
               >
-                <User className="h-4 w-4" />
+                
                 Dashboard
               </Button>
             </Link>
@@ -67,41 +67,41 @@ export function Navbar() {
         <div className="md:hidden flex items-center gap-2 mt-3">
           <Link href="/" className="flex-1">
             <Button
-              variant={isActive('/') ? 'default' : 'ghost'}
+              variant={isActive('/') ? 'navbar' : 'ghost'}
               className="w-full gap-2"
               size="sm"
             >
-              <Home className="h-4 w-4" />
+             
               Home
             </Button>
           </Link>
           <Link href="/explore" className="flex-1">
             <Button
-              variant={isActive('/explore') ? 'default' : 'ghost'}
+              variant={isActive('/explore') ? 'navbar' : 'ghost'}
               className="w-full gap-2"
               size="sm"
             >
-              <Search className="h-4 w-4" />
+              
               Explore
             </Button>
           </Link>
-          <Link href="/submit" className="flex-1">
-            <Button
+           {/*<Link href="/submit" className="flex-1">
+           <Button
               variant={isActive('/submit') ? 'default' : 'ghost'}
               className="w-full gap-2"
               size="sm"
             >
-              <Plus className="h-4 w-4" />
+              
               Submit
             </Button>
-          </Link>
+          </Link>*/}
           <Link href="/dashboard" className="flex-1">
             <Button
-              variant={isActive('/dashboard') ? 'default' : 'ghost'}
+              variant={isActive('/dashboard') ? 'navbar' : 'ghost'}
               className="w-full gap-2"
               size="sm"
             >
-              <User className="h-4 w-4" />
+           
               Dashboard
             </Button>
           </Link>
