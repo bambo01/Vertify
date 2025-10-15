@@ -90,47 +90,55 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#1A2745]">
-      <section className="relative min-h-screen overflow-hidden">
-        {/* BG image + overlay */}
-        <div
-          className="
-    pointer-events-none absolute inset-x-0 bottom-0
-    h-[260px] md:h-[340px] lg:h-[470px] xl:h-[630px]
-    bg-[url('/main.webp')] dark:bg-[url('/main1.webp')]
-    bg-no-repeat bg-bottom bg-contain
-  "
-        />
-        {/* Your content */}
-        <div className="text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
-          <h1 className="text-xl md:text-5xl font-medium mb-6 bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-[#5EC7F3] dark:to-[#FFFFFF] bg-clip-text text-transparent">
-            Revolutionizing Trust and Security with Next-Gen Blockchain
-            Solutions
-          </h1>
-          <p className="text-sm md:text-lg font-light mb-5">
-            Helping people trust what they read through fact-checking and earn
-            for being accurate — secured on Base Ethereum L2.
-          </p>
+<section className="relative isolate min-h-screen overflow-hidden">
+  {/* BG image + overlay */}
+  <div
+    aria-hidden
+    className="
+      pointer-events-none absolute inset-x-0 bottom-0 z-0
+      h-[260px] md:h-[340px] lg:h-[470px] xl:h-[630px]
+      bg-[url('/main.webp')] dark:bg-[url('/main1.webp')]
+      bg-no-repeat bg-bottom bg-contain
+    "
+  />
 
-          <div className="flex gap-4 justify-center flex-wrap">
-            <Link href="/explore">
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-80"
-              >
-                Explore Claims
-              </Button>
-            </Link>
-            <Link href="/submit">
-              <Button
-                size="lg"
-                className="bg-white text-black border border-gray-200"
-              >
-                Submit Claim
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+  {/* Content */}
+  <div className="relative z-10 text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
+    <h1 className="text-2xl md:text-5xl font-medium leading-[1.15] md:leading-[1.12] pb-[2px] mb-6">
+      <span className="bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA]
+                       dark:from-[#5EC7F3] dark:to-[#FFFFFF]
+                       bg-clip-text text-transparent">
+        Transforming Fact-Checking into a Fun and Rewarding Experience
+      </span>
+    </h1>
+
+    <p className="text-sm md:text-lg font-light mb-5 mx-auto max-w-[44rem]">
+      Helping people trust what they read through fact-checking and earn
+      for being accurate — secured on Base.
+    </p>
+
+    <div className="flex gap-4 justify-center flex-wrap">
+      <Link href="/explore">
+        <Button
+          size="lg"
+          className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-80"
+        >
+          Explore Claims
+        </Button>
+      </Link>
+      <Link href="/submit">
+        <Button
+          size="lg"
+          className="bg-white text-black border border-gray-200"
+        >
+          Submit Claim
+        </Button>
+      </Link>
+    </div>
+  </div>
+</section>
+
+
 
       {/* HOW IT WORKS */}
       <section
@@ -436,9 +444,9 @@ export default function HomePage() {
               </div>
               {/* image on right */}
               <img
-                src="/cta-submit.webp" /* put this in /public (or change the path) */
+                src="/vote.webp" /* put this in /public (or change the path) */
                 alt=""
-                className="pointer-events-none select-none absolute right-3 bottom-2 h-28 md:h-32 w-auto rounded-lg object-contain"
+                className="pointer-events-none select-none absolute right-0 -bottom-2 h-28 md:h-52 w-auto rounded-lg object-contain"
               />
             </div>
           </div>

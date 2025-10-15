@@ -11,13 +11,22 @@ export function Navbar() {
 
   return (
     <nav className="border-b bg-white dark:bg-[#1A2745] sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-3">
+      <div className="container mx-auto px-4 ">
         <div className="flex items-center justify-between">
           {/* left: logo */}
           <Link href="/" className="flex items-center gap-2 text-2xl font-bold">
-            <span className="text-[#227DC3] dark:text-white font-semibold">
-              Vertify
-            </span>
+        <img
+  src="/logo.webp"
+  alt="Vertify"
+  className="h-20 w-auto dark:hidden"
+/>
+<img
+  src="/logoW.webp"
+  alt="Vertify"
+  className="h-20 w-auto hidden dark:block"
+/>
+
+
           </Link>
 
           {/* center: desktop nav */}
