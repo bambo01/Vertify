@@ -75,7 +75,9 @@ function Dashboard() {
 
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Submissions</CardTitle>
+         
+            <h1 className='dark:text-white'>Submissions</h1>
+          
           <div className="flex items-center gap-2">
             {['pending', 'approved', 'rejected', 'all'].map((k) => (
               <Button

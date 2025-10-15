@@ -13,7 +13,7 @@ const VOTES_KEY  = "truthchain_votes";
 const USERS_KEY  = "truthchain_users";
 
 // Toggle true for offline/localStorage-only development
-const USE_LOCALSTORAGE = false;
+const USE_LOCALSTORAGE = true;
 
 /* ---------------------------- helpers ---------------------------- */
 

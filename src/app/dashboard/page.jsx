@@ -148,7 +148,7 @@ export default function DashboardPage() {
       <div className="container mx-auto px-4 py-12">
         <div className='flex justify-between'>
           <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">{profile.displayName}&apos;s Dashboard</h1>
+          <h1 className="text-4xl font-bold mb-2 text-gray-700 dark:text-white">{profile.displayName}&apos;s Dashboard</h1>
           <p className="text-gray-600 dark:text-gray-400">Track your fact-checking performance and earn badges</p>
         </div>
           <Link href="/submit">
