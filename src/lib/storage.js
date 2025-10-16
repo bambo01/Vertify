@@ -13,7 +13,7 @@ const VOTES_KEY  = "truthchain_votes";
 const USERS_KEY  = "truthchain_users";
 
 // Toggle true for offline/localStorage-only development
-const USE_LOCALSTORAGE = true;
+const USE_LOCALSTORAGE = false;
 
 /* ---------------------------- helpers ---------------------------- */
 
@@ -439,13 +439,23 @@ async saveUserProfile(profile) {
     }
 
     // Persist plain category names explicitly
+    // Persist full category objects instead of plain strings
     if (categoriesPlain.length > 0) {
-      console.log(`[storage.saveUserProfile] → /users/${wallet}/categories payload`, categoriesPlain);
-      const categoriesResp = await apiClient.updateUserCategories(wallet, categoriesPlain);
+      // build structured payload for backend
+      const categoriesPayload = categoriesPlain.map((cat) => ({
+        category: cat,
+        tier: "silver",
+        status: "pending",
+      }));
+
+      console.log(`[storage.saveUserProfile] → /users/${wallet}/categories payload`, categoriesPayload);
+
+      const categoriesResp = await apiClient.updateUserCategories(wallet, categoriesPayload);
       console.log(`[storage.saveUserProfile] ← /users/${wallet}/categories response`, categoriesResp);
     } else {
       console.log("[storage.saveUserProfile] (no categories to persist)");
     }
+
 
     // (Optional future: roleBadges endpoint)
     // if (roleBadges.length) await apiClient.upsertVerifications(wallet, { roleBadges });
