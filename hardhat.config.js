@@ -24,7 +24,7 @@ module.exports = {
       url: BASE_SEPOLIA_RPC,
       accounts: [PRIVATE_KEY],
       chainId: 84532,
-      gasPrice: 1000000000
+      gasPrice: 200000000
     },
     base: {
       url: BASE_MAINNET_RPC,
