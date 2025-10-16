@@ -2,7 +2,7 @@
 export const BADGE_TIERS = {
   Silver: {
     tier: 'Silver',
-    truthScoreMin: 0.50,
+    truthScoreMin: 0,
     minimumVotes: 0,
     maxStakePerVote: 0.002,
     dailyStakeCap: 0.010,

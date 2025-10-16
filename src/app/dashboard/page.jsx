@@ -1,30 +1,30 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useAccount } from 'wagmi';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useAccount } from "wagmi";
+import { useRouter } from "next/navigation";
 
-import { WalletRequired } from '@/components/wallet-connect';
-import { ClaimCard } from '@/components/claim-card';
+import { WalletRequired } from "@/components/wallet-connect";
+import { ClaimCard } from "@/components/claim-card";
 
-import { storage } from '@/lib/storage';
-import { BADGE_REQUIREMENTS } from '@/lib/constants';
+import { storage } from "@/lib/storage";
+import { BADGE_REQUIREMENTS } from "@/lib/constants";
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog';
-import { toast } from 'sonner';
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 import {
   TrendingUp,
@@ -35,8 +35,12 @@ import {
   Zap,
   AlertTriangle,
   Plus,
-  ShieldCheck
-} from 'lucide-react';
+  ShieldCheck,
+  ExternalLink,
+} from "lucide-react";
+
+const EXPLORER_BASE =
+  process.env.NEXT_PUBLIC_BLOCK_EXPLORER_BASE || "https://sepolia.basescan.org";
 
 export default function DashboardPage() {
   const { address } = useAccount();
@@ -59,18 +63,27 @@ export default function DashboardPage() {
   const [claiming, setClaiming] = useState({});
 
   const getBadgeProgress = (badge) => {
-    if ((badge.tier || '').toLowerCase() === 'expert') {
-      return { nextTier: 'Max Level', progress: 100, requirement: 'You are at the highest tier!' };
+    if ((badge.tier || "").toLowerCase() === "expert") {
+      return {
+        nextTier: "Max Level",
+        progress: 100,
+        requirement: "You are at the highest tier!",
+      };
     }
 
-    const nextTier = (badge.tier || '').toLowerCase() === 'silver' ? 'Gold' : 'Expert';
+    const nextTier =
+      (badge.tier || "").toLowerCase() === "silver" ? "Gold" : "Expert";
     const requirements = BADGE_REQUIREMENTS[nextTier];
 
     const truthScore = Number(badge.truthScore ?? 0);
-    const totalVotes = Number(badge.totalVotes ?? 0);
+    const totalVotes = Number(badge.totalVotes ?? badge.voteCount ?? 0);
 
-    const scoreProgress = requirements ? (truthScore / requirements.truthScoreMin) * 100 : 0;
-    const votesProgress = requirements ? (totalVotes / requirements.minimumVotes) * 100 : 0;
+    const scoreProgress = requirements
+      ? (truthScore / requirements.truthScoreMin) * 100
+      : 0;
+    const votesProgress = requirements
+      ? (totalVotes / requirements.minimumVotes) * 100
+      : 0;
     const progress = Math.min((scoreProgress + votesProgress) / 2, 100);
 
     return {
@@ -78,7 +91,7 @@ export default function DashboardPage() {
       progress,
       requirement: requirements
         ? `Need ${requirements.truthScoreMin * 100}% truth score & ${requirements.minimumVotes} votes`
-        : 'Progress data unavailable',
+        : "Progress data unavailable",
     };
   };
 
@@ -88,7 +101,9 @@ export default function DashboardPage() {
       setCheckingStatus(true);
       const updated = await storage.getUserProfile(address);
       setProfile(updated);
-      setShowPendingModal((updated?.status || '').toLowerCase() === 'pending');
+      setShowPendingModal(
+        (updated?.status || "").toLowerCase() === "pending"
+      );
     } finally {
       setCheckingStatus(false);
     }
@@ -100,11 +115,13 @@ export default function DashboardPage() {
       if (address) {
         const userProfile = await storage.getUserProfile(address);
         if (!userProfile) {
-          router.push('/register');
+          router.push("/register");
           return;
         }
         setProfile(userProfile);
-        setShowPendingModal((userProfile?.status || '').toLowerCase() === 'pending');
+        setShowPendingModal(
+          (userProfile?.status || "").toLowerCase() === "pending"
+        );
 
         const claims = await storage.getUserClaims(address);
         const votes = await storage.getUserVotes(address);
@@ -122,8 +139,8 @@ export default function DashboardPage() {
         const claim = await storage.getClaim(vote.claimId);
         if (!claim || !claim.aiVerdict) continue;
 
-        const userVotedTruth = vote.vote === 'truth';
-        const aiSaysTruth = claim.aiVerdict.result === 'Truth';
+        const userVotedTruth = vote.vote === "truth";
+        const aiSaysTruth = claim.aiVerdict.result === "Truth";
         if (userVotedTruth === aiSaysTruth) count++;
       }
       setCorrectVotes(count);
@@ -138,8 +155,8 @@ export default function DashboardPage() {
         const claim = await storage.getClaim(vote.claimId);
         if (!claim || !claim.aiVerdict) continue;
 
-        const userVotedTruth = vote.vote === 'truth';
-        const aiSaysTruth = claim.aiVerdict.result === 'Truth';
+        const userVotedTruth = vote.vote === "truth";
+        const aiSaysTruth = claim.aiVerdict.result === "Truth";
         const correct = userVotedTruth === aiSaysTruth;
 
         const stake = Number(vote.stake ?? 0);
@@ -162,7 +179,8 @@ export default function DashboardPage() {
     if (userVotes.length > 0) loadVoteClaims();
   }, [userVotes]);
 
-  const accuracy = userVotes.length > 0 ? (correctVotes / userVotes.length) * 100 : 0;
+  const accuracy =
+    userVotes.length > 0 ? (correctVotes / userVotes.length) * 100 : 0;
 
   // ---------- categories to claim ----------
   const badgesByCategory = useMemo(() => {
@@ -176,35 +194,85 @@ export default function DashboardPage() {
   const normalizedCategories = useMemo(() => {
     const cats = Array.isArray(profile?.categories) ? profile.categories : [];
     return cats.map((c) =>
-      typeof c === 'string' ? { category: c, tier: 'silver', status: 'pending' } : c
+      typeof c === "string"
+        ? { category: c, tier: "silver", status: "pending" }
+        : c
     );
   }, [profile]);
 
   const claimableCategories = useMemo(() => {
-    // Claim list = categories with no minted badge yet
     return normalizedCategories.filter((c) => {
       const key = String(c.category).toLowerCase();
-      return !badgesByCategory.has(key);
+      return !badgesByCategory.has(key); // no minted badge yet
     });
   }, [normalizedCategories, badgesByCategory]);
 
-  const canClaimNow = (catObj) => {
-    // Only allow when the profile is approved
-    return (profile?.status || '').toLowerCase() === 'approved';
-  };
+  const canClaimNow = () =>
+    (profile?.status || "").toLowerCase() === "approved";
 
+  // ---------- Claim flow: mark → server mint → finalize ----------
   const claimBadge = async (catName) => {
     if (!address) return;
     try {
       setClaiming((s) => ({ ...s, [catName]: true }));
+
+      // 1) Mark DB category as claim_requested
       await storage.requestCategoryClaim(address, catName);
+
+      // 2) Ask server to mint (owner key; idempotent)
+      const res = await fetch("/api/mint-badge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: address, category: catName, tier: "Silver" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Mint failed");
+
+      // 3) Persist badge + flip category to minted (saves tokenId & txHash)
+      await storage.finalizeCategoryBadgeMint(address, {
+        category: catName,
+        tokenId: json.tokenId,
+        txHash: json.txHash,
+        tier: "silver",
+      });
+
+      toast.success(
+        json.alreadyMinted
+          ? `Badge for ${catName} already minted (Token #${json.tokenId}).`
+          : `Minted ${catName} badge${json.tokenId ? ` #${json.tokenId}` : ""} ✓`,
+        json.txHash
+          ? {
+              description: "View on Basescan",
+              action: {
+                label: "Open",
+                onClick: () =>
+                  window.open(`${EXPLORER_BASE}/tx/${json.txHash}`, "_blank"),
+              },
+            }
+          : undefined
+      );
+
       await refreshProfile();
-      toast.success(`Claim requested for ${catName}. Minting will complete shortly.`);
     } catch (err) {
-      console.error('claim error', err);
-      toast.error('Failed to claim badge. Please try again.');
+      console.error("claim error", err);
+      toast.error(
+        err?.shortMessage || err?.message || "Failed to claim badge. Please try again."
+      );
     } finally {
       setClaiming((s) => ({ ...s, [catName]: false }));
+    }
+  };
+
+  const canSync = typeof storage.syncBadgesFromChain === "function";
+  const resyncFromChain = async () => {
+    if (!address || !canSync) return;
+    try {
+      toast.message("Resyncing badges from chain…");
+      const updated = await storage.syncBadgesFromChain(address);
+      setProfile(updated);
+      toast.success("Synced from blockchain ✓");
+    } catch (e) {
+      toast.error(e?.message || "Resync failed");
     }
   };
 
@@ -238,8 +306,8 @@ export default function DashboardPage() {
               Account pending review
             </DialogTitle>
             <DialogDescription>
-              Thanks for registering. Please wait while an admin validates your account.
-              You’ll get full access once approved.
+              Thanks for registering. Please wait while an admin validates your
+              account. You’ll get full access once approved.
             </DialogDescription>
           </DialogHeader>
 
@@ -258,15 +326,15 @@ export default function DashboardPage() {
               Hide
             </Button>
             <Button onClick={refreshProfile} disabled={checkingStatus}>
-              {checkingStatus ? 'Checking…' : 'Refresh status'}
+              {checkingStatus ? "Checking…" : "Refresh status"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <div className="container mx-auto px-4 py-12">
-        <div className="flex justify-between">
-          <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-8">
+          <div>
             <h1 className="text-4xl font-bold mb-2 text-gray-700 dark:text-white">
               {profile.displayName}&apos;s Dashboard
             </h1>
@@ -275,12 +343,19 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <Link href="/submit">
-            <Button className="gap-2 bg-[#44ADFF]">
-              <Plus className="h-4 w-4" />
-              Submit Claim
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            {canSync && (
+              <Button variant="outline" onClick={resyncFromChain}>
+                Resync badges
+              </Button>
+            )}
+            <Link href="/submit">
+              <Button className="gap-2 bg-[#44ADFF]">
+                <Plus className="h-4 w-4" />
+                Submit Claim
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* KPIs */}
@@ -294,7 +369,10 @@ export default function DashboardPage() {
                 </span>
               </div>
               <p className="text-gray-600 dark:text-gray-400">Truth Score</p>
-              <Progress value={(profile.overallTruthScore ?? 0) * 100} className="mt-2" />
+              <Progress
+                value={(profile.overallTruthScore ?? 0) * 100}
+                className="mt-2"
+              />
             </CardContent>
           </Card>
 
@@ -302,7 +380,9 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <VoteIcon className="h-8 w-8 text-green-600" />
-                <span className="text-3xl font-bold dark:text-white">{userVotes.length}</span>
+                <span className="text-3xl font-bold dark:text-white">
+                  {userVotes.length}
+                </span>
               </div>
               <p className="text-gray-600 dark:text-gray-400">Total Votes</p>
               <p className="text-sm text-green-600 mt-1">{correctVotes} correct</p>
@@ -313,7 +393,9 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <Award className="h-8 w-8 text-yellow-600" />
-                <span className="text-3xl font-bold dark:text-white">{accuracy.toFixed(0)}%</span>
+                <span className="text-3xl font-bold dark:text-white">
+                  {accuracy.toFixed(0)}%
+                </span>
               </div>
               <p className="text-gray-600 dark:text-gray-400">Vote Accuracy</p>
             </CardContent>
@@ -323,7 +405,9 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <TrendingUp className="h-8 w-8 text-blue-600" />
-                <span className="text-3xl font-bold dark:text-white">{totalEarnings.toFixed(3)}</span>
+                <span className="text-3xl font-bold dark:text-white">
+                  {totalEarnings.toFixed(3)}
+                </span>
               </div>
               <p className="text-gray-600 dark:text-gray-400">ETH Earned</p>
             </CardContent>
@@ -348,22 +432,26 @@ export default function DashboardPage() {
                 {profile.badges.map((badge) => {
                   const badgeProgress = getBadgeProgress(badge);
                   return (
-                    <div key={badge.category} className="p-4 bg-gray-50 rounded-lg dark:bg-[#252526]">
+                    <div
+                      key={`${badge.category}-${badge.tokenId ?? "noid"}`}
+                      className="p-4 bg-gray-50 rounded-lg dark:bg-[#252526]"
+                    >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <Badge
                             className={
-                              (badge.tier || '').toLowerCase() === 'expert'
-                                ? 'bg-purple-100 text-purple-800'
-                                : (badge.tier || '').toLowerCase() === 'gold'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
+                              (badge.tier || "").toLowerCase() === "expert"
+                                ? "bg-purple-100 text-purple-800"
+                                : (badge.tier || "").toLowerCase() === "gold"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
                             }
                           >
                             {badge.category} {badge.tier}
                           </Badge>
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {(badge.totalVotes ?? 0)} votes • {(badge.correctVotes ?? 0)} correct
+                            {(badge.totalVotes ?? badge.voteCount ?? 0)} votes •{" "}
+                            {(badge.correctVotes ?? 0)} correct
                           </span>
                         </div>
                         <Badge variant="outline">
@@ -384,10 +472,23 @@ export default function DashboardPage() {
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {badgeProgress.requirement}
                         </p>
-                        {badge.status && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Status: {badge.status}{badge.tokenId ? ` • Token #${badge.tokenId}` : ''}
-                          </p>
+                        {(badge.status || badge.tokenId || badge.txHash) && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                            <span>
+                              Status: {badge.status || "active"}
+                              {badge.tokenId ? ` • Token #${badge.tokenId}` : ""}
+                            </span>
+                            {badge.txHash && (
+                              <a
+                                href={`${EXPLORER_BASE}/tx/${badge.txHash}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 underline hover:opacity-80"
+                              >
+                                View tx <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -398,7 +499,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Claimable categories (no badge yet) */}
+        {/* Claimable categories */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 dark:text-white">
@@ -414,28 +515,34 @@ export default function DashboardPage() {
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {claimableCategories.map((c) => {
-                  const statusLc = String(c.status || 'pending').toLowerCase();
+                  const statusLc = String(c.status || "pending").toLowerCase();
                   const awaitingMint =
-                    statusLc === 'claim_requested' || statusLc === 'minting' || statusLc === 'minted';
+                    statusLc === "claim_requested" ||
+                    statusLc === "minting" ||
+                    statusLc === "minted";
 
                   const disabled =
-                    !canClaimNow(c) || awaitingMint || !!claiming[c.category];
+                    !canClaimNow() || awaitingMint || !!claiming[c.category];
 
-                  const buttonText =
-                    claiming[c.category]
-                      ? 'Claiming…'
-                      : awaitingMint
-                      ? (statusLc === 'claim_requested' ? 'Awaiting Mint…'
-                        : statusLc === 'minted' ? 'Minted — syncing…'
-                        : 'Minting…')
-                      : 'Claim Badge';
+                  const buttonText = claiming[c.category]
+                    ? "Claiming…"
+                    : awaitingMint
+                    ? statusLc === "claim_requested"
+                      ? "Awaiting Mint…"
+                      : statusLc === "minted"
+                      ? "Minted — syncing…"
+                      : "Minting…"
+                    : "Claim Badge";
 
                   return (
-                    <div key={c.category} className="p-4 rounded-lg border dark:border-gray-700">
+                    <div
+                      key={c.category}
+                      className="p-4 rounded-lg border dark:border-gray-700"
+                    >
                       <div className="mb-2 flex items-center justify-between">
                         <Badge variant="outline">{c.category}</Badge>
                         <Badge variant="secondary">
-                          {(c.status || 'pending').replace(/_/g, ' ')}
+                          {(c.status || "pending").replace(/_/g, " ")}
                         </Badge>
                       </div>
                       <p className="text-xs text-gray-500 mb-3 dark:text-gray-400">
@@ -448,9 +555,10 @@ export default function DashboardPage() {
                       >
                         {buttonText}
                       </Button>
-                      {!canClaimNow(c) && (
+                      {!canClaimNow() && (
                         <p className="mt-2 text-xs text-amber-600">
-                          Badge claim will be available once your account is approved.
+                          Badge claim will be available once your account is
+                          approved.
                         </p>
                       )}
                     </div>
@@ -505,15 +613,17 @@ export default function DashboardPage() {
 
                   let isCorrect = null;
                   if (claim.aiVerdict) {
-                    const userVotedTruth = vote.vote === 'truth';
-                    const aiSaysTruth = claim.aiVerdict.result === 'Truth';
+                    const userVotedTruth = vote.vote === "truth";
+                    const aiSaysTruth = claim.aiVerdict.result === "Truth";
                     isCorrect = userVotedTruth === aiSaysTruth;
                   }
 
                   const stake = Number(vote.stake ?? 0);
 
                   return (
-                    <Card key={vote.id || `${vote.claimId}-${vote.voterAddress || ''}`}>
+                    <Card
+                      key={vote.id || `${vote.claimId}-${vote.voterAddress || ""}`}
+                    >
                       <CardHeader>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -523,24 +633,26 @@ export default function DashboardPage() {
                                 {vote.badgeTier}
                               </Badge>
                             </div>
-                            <CardTitle className="text-lg">{claim.title}</CardTitle>
+                            <CardTitle className="text-lg">
+                              {claim.title}
+                            </CardTitle>
                           </div>
                           <div className="flex gap-2">
                             <Badge
                               className={
-                                vote.vote === 'truth'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
+                                vote.vote === "truth"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
                               }
                             >
-                              {vote.vote === 'truth' ? 'Truth' : 'Fake'}
+                              {vote.vote === "truth" ? "Truth" : "Fake"}
                             </Badge>
                             {isCorrect !== null && (
                               <Badge
-                                variant={isCorrect ? 'default' : 'secondary'}
-                                className={isCorrect ? 'bg-green-600' : 'bg-gray-500'}
+                                variant={isCorrect ? "default" : "secondary"}
+                                className={isCorrect ? "bg-green-600" : "bg-gray-500"}
                               >
-                                {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                                {isCorrect ? "✓ Correct" : "✗ Incorrect"}
                               </Badge>
                             )}
                           </div>
@@ -550,7 +662,9 @@ export default function DashboardPage() {
                         <div className="flex justify-between text-sm text-gray-600 mb-2">
                           <span>Stake: {stake.toFixed(3)} ETH</span>
                           <span>
-                            {vote.timestamp ? new Date(vote.timestamp).toLocaleDateString() : ''}
+                            {vote.timestamp
+                              ? new Date(vote.timestamp).toLocaleDateString()
+                              : ""}
                           </span>
                         </div>
                         {(vote.evidence || []).length > 0 && (

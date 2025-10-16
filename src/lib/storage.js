@@ -7,6 +7,9 @@
 // - Keeps localStorage fallback intact
 
 import { apiClient } from "./api-client";
+const ROLE_BADGE_CONTRACT = process.env.NEXT_PUBLIC_ROLE_BADGE_NFT_ADDRESS || "";
+const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 84532); // 84532 = Base Sepolia
+
 
 const CLAIMS_KEY = "truthchain_claims";
 const VOTES_KEY  = "truthchain_votes";
@@ -807,58 +810,167 @@ async updateUserStatus({ address, status }) {
     return await this.getUserProfile(wallet);
   },
 
-  /**
-   * Call this AFTER on-chain mint succeeds to add the badge and mark category minted.
-   */
-  async finalizeCategoryBadgeMint(
-    address,
-    { category, tokenId, txHash, imageUrl, tier = "silver" } = {}
-  ) {
-    if (!address || !category) throw new Error("address and category are required");
-    const wallet = String(address).toLowerCase();
-    const current = await this.getUserProfile(wallet);
+ async finalizeCategoryBadgeMint(
+  address,
+  { category, tokenId, txHash, imageUrl, tier = "silver", metadataURI } = {}
+) {
+  if (!address || !category) throw new Error("address and category are required");
+  const wallet = String(address).toLowerCase();
+  const current = await this.getUserProfile(wallet);
 
-    const existingBadges = Array.isArray(current?.badges) ? current.badges : [];
-    const hasBadge = existingBadges.some(
-      (b) => String(b.category).toLowerCase() === String(category).toLowerCase()
-    );
+  const existingBadges = Array.isArray(current?.badges) ? current.badges : [];
 
-    // Append minted badge if not already present
-    if (!hasBadge) {
-      const mintedBadge = {
-        category,
-        tier,
-        status: "active",
-        mintedAt: Date.now(),
-        tokenId: tokenId ?? undefined,
-        txHash: txHash ?? undefined,
-        imageUrl: imageUrl ?? undefined,
-        voteCount: 0,
-        truthScore: 0.5,
-      };
-      await apiClient.updateUserBadges(wallet, [...existingBadges, mintedBadge]);
-    }
+  // normalize helpers
+  const catEq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  const now = Date.now();
 
-    // Flip category status to minted
-    const cats = Array.isArray(current?.categories) ? current.categories : [];
-    const categoriesPayload = cats.map((c) => {
-      const name = typeof c === "string" ? c : c.category;
-      const isTarget =
-        String(name).toLowerCase() === String(category).toLowerCase();
-      return {
+  // Build new badges array with upsert logic
+  let found = false;
+  const newBadges = existingBadges.map((b) => {
+    if (!catEq(b.category, category)) return b;
+
+    found = true;
+    return {
+      ...b,
+      category,
+      tier: tier || b.tier || "silver",
+      status: "active",
+      // new fields we want to persist
+      tokenId: tokenId != null ? String(tokenId) : (b.tokenId ?? undefined),
+      txHash: txHash || b.txHash,
+      contractAddress: ROLE_BADGE_CONTRACT || b.contractAddress,
+      chainId: CHAIN_ID || b.chainId,
+      metadataURI: metadataURI || b.metadataURI,
+      imageUrl: imageUrl || b.imageUrl,
+      // keep existing counters if present
+      voteCount: typeof b.voteCount === "number" ? b.voteCount : 0,
+      truthScore: typeof b.truthScore === "number" ? b.truthScore : 0.5,
+      mintedAt: b.mintedAt || now,
+    };
+  });
+
+  if (!found) {
+    newBadges.push({
+      category,
+      tier,
+      status: "active",
+      tokenId: tokenId != null ? String(tokenId) : undefined,
+      txHash: txHash || undefined,
+      contractAddress: ROLE_BADGE_CONTRACT || undefined,
+      chainId: CHAIN_ID,
+      metadataURI: metadataURI || undefined,
+      imageUrl: imageUrl || undefined,
+      voteCount: 0,
+      truthScore: 0.5,
+      mintedAt: now,
+    });
+  }
+  console.log('myBadges: ', newBadges);
+
+  // Save the full badges array (existing API)
+  await apiClient.updateUserBadges(wallet, newBadges);
+
+  // Update categories → set this category to "minted" (add if missing)
+  const cats = Array.isArray(current?.categories) ? current.categories : [];
+  const nextCats = [];
+  let hadCat = false;
+
+  for (const c of cats) {
+    const name = typeof c === "string" ? c : c.category;
+    if (catEq(name, category)) {
+      hadCat = true;
+      nextCats.push({
         category: name,
         tier: (typeof c === "object" && c.tier) || "silver",
-        status: isTarget
-          ? "minted"
-          : ((typeof c === "object" && c.status) || "pending"),
-      };
+        status: "minted",
+      });
+    } else {
+      nextCats.push({
+        category: name,
+        tier: (typeof c === "object" && c.tier) || "silver",
+        status: (typeof c === "object" && c.status) || "pending",
+      });
+    }
+  }
+
+  if (!hadCat) {
+    nextCats.push({ category, tier: "silver", status: "minted" });
+  }
+
+  await apiClient.updateUserCategories(wallet, nextCats);
+
+  // Return fresh profile for UI
+  return await this.getUserProfile(wallet);
+},
+
+async syncBadgesFromChain(address) {
+  if (!address) throw new Error("address is required");
+  const res = await fetch("/api/resync-badges", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || "Resync failed");
+
+  // Persist each (category, tokenId, txHash)
+  for (const item of json.minted || []) {
+    await this.finalizeCategoryBadgeMint(address, {
+      category: item.category,
+      tokenId: item.tokenId,
+      txHash: item.txHash || undefined,
+      tier: "silver",
     });
-    if (categoriesPayload.length) {
-      await apiClient.updateUserCategories(wallet, categoriesPayload);
+  }
+
+  // Return fresh profile from backend
+  return await this.getUserProfile(address);
+},
+
+  /**
+   * Read on-chain badges for a wallet (via /api/resync-badges)
+   * and upsert them into our DB (keeps tokenId/txHash).
+   */
+  async syncBadgesFromChain(address) {
+    if (!address) throw new Error("address is required");
+    const wallet = String(address).toLowerCase();
+
+    const res = await fetch("/api/resync-badges", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ address: wallet }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json?.error || "Resync failed");
     }
 
+    const onchain = Array.isArray(json.badges) ? json.badges : [];
+
+    // Merge: add any on-chain badge that isn't yet saved in DB
+    const current = await this.getUserProfile(wallet);
+    const existingByCat = new Map(
+      (current?.badges || []).map((b) => [String(b.category).toLowerCase(), b])
+    );
+
+    for (const b of onchain) {
+      const lc = String(b.category).toLowerCase();
+      if (!existingByCat.has(lc)) {
+        // will also set category->minted
+        await this.finalizeCategoryBadgeMint(wallet, {
+          category: b.category,
+          tokenId: b.tokenId,
+          txHash: b.txHash || undefined,
+          tier: "silver",
+        });
+      }
+    }
+
+    // Return the refreshed profile after updates
     return await this.getUserProfile(wallet);
   },
+
+
 
 
 
