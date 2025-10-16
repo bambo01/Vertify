@@ -94,7 +94,7 @@ export default function ExplorePage() {
             {CATEGORIES.map((category) => (
               <Button
                 key={category}
-                variant={selectedCategory === category ? 'default' : 'outline'}
+                variant={selectedCategory === category ? 'default' : 'explore'}
                 size="sm"
                 onClick={() => setSelectedCategory(category)}
                 className="gap-1"

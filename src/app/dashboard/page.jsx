@@ -1,38 +1,91 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
+
 import { WalletRequired } from '@/components/wallet-connect';
-import { BadgeGrid } from '@/components/badge-display';
+import { ClaimCard } from '@/components/claim-card';
+
 import { storage } from '@/lib/storage';
 import { BADGE_REQUIREMENTS } from '@/lib/constants';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClaimCard } from '@/components/claim-card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, FileText, Vote as VoteIcon, Award, Target, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
 
-import Link from 'next/link';
-import { Button } from '../../components/ui/button';
-import { usePathname } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import {
+  TrendingUp,
+  FileText,
+  Vote as VoteIcon,
+  Award,
+  Target,
+  Zap,
+  AlertTriangle,
+  Plus
+} from 'lucide-react';
 
 export default function DashboardPage() {
   const { address } = useAccount();
   const router = useRouter();
+
   const [profile, setProfile] = useState(null);
   const [userClaims, setUserClaims] = useState([]);
   const [userVotes, setUserVotes] = useState([]);
   const [isClient, setIsClient] = useState(false);
+
   const [correctVotes, setCorrectVotes] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [voteClaims, setVoteClaims] = useState({});
 
-   const pathname = usePathname();
-  
-    const isActive = (path) => pathname === path;
+  // Modal: show when user.status === 'pending'
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+
+  const getBadgeProgress = (badge) => {
+    if (badge.tier === 'Expert') {
+      return { nextTier: 'Max Level', progress: 100, requirement: 'You are at the highest tier!' };
+    }
+
+    const nextTier = badge.tier === 'Silver' ? 'Gold' : 'Expert';
+    const requirements = BADGE_REQUIREMENTS[nextTier];
+
+    const truthScore = Number(badge.truthScore ?? 0);
+    const totalVotes = Number(badge.totalVotes ?? 0);
+
+    const scoreProgress = (truthScore / requirements.truthScoreMin) * 100;
+    const votesProgress = (totalVotes / requirements.minimumVotes) * 100;
+    const progress = Math.min((scoreProgress + votesProgress) / 2, 100);
+
+    return {
+      nextTier,
+      progress,
+      requirement: `Need ${requirements.truthScoreMin * 100}% truth score & ${requirements.minimumVotes} votes`,
+    };
+  };
+
+  const refreshProfile = async () => {
+    if (!address) return;
+    try {
+      setCheckingStatus(true);
+      const updated = await storage.getUserProfile(address);
+      setProfile(updated);
+      setShowPendingModal((updated?.status || '').toLowerCase() === 'pending');
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   useEffect(() => {
     setIsClient(true);
@@ -44,6 +97,8 @@ export default function DashboardPage() {
           return;
         }
         setProfile(userProfile);
+        setShowPendingModal((userProfile?.status || '').toLowerCase() === 'pending');
+
         const claims = await storage.getUserClaims(address);
         const votes = await storage.getUserVotes(address);
         setUserClaims(claims);
@@ -59,7 +114,7 @@ export default function DashboardPage() {
       for (const vote of userVotes) {
         const claim = await storage.getClaim(vote.claimId);
         if (!claim || !claim.aiVerdict) continue;
-        
+
         const userVotedTruth = vote.vote === 'truth';
         const aiSaysTruth = claim.aiVerdict.result === 'Truth';
         if (userVotedTruth === aiSaysTruth) count++;
@@ -75,12 +130,13 @@ export default function DashboardPage() {
       for (const vote of userVotes) {
         const claim = await storage.getClaim(vote.claimId);
         if (!claim || !claim.aiVerdict) continue;
-        
+
         const userVotedTruth = vote.vote === 'truth';
         const aiSaysTruth = claim.aiVerdict.result === 'Truth';
         const correct = userVotedTruth === aiSaysTruth;
-        
-        earnings += correct ? vote.stake * 1.8 : 0;
+
+        const stake = Number(vote.stake ?? 0);
+        earnings += correct ? stake * 1.8 : 0;
       }
       setTotalEarnings(earnings);
     };
@@ -92,37 +148,14 @@ export default function DashboardPage() {
       const claims = {};
       for (const vote of userVotes) {
         const claim = await storage.getClaim(vote.claimId);
-        if (claim) {
-          claims[vote.claimId] = claim;
-        }
+        if (claim) claims[vote.claimId] = claim;
       }
       setVoteClaims(claims);
     };
-    if (userVotes.length > 0) {
-      loadVoteClaims();
-    }
+    if (userVotes.length > 0) loadVoteClaims();
   }, [userVotes]);
 
   const accuracy = userVotes.length > 0 ? (correctVotes / userVotes.length) * 100 : 0;
-
-  const getBadgeProgress = (badge) => {
-    if (badge.tier === 'Expert') {
-      return { nextTier: 'Max Level', progress: 100, requirement: 'You are at the highest tier!' };
-    }
-
-    const nextTier = badge.tier === 'Silver' ? 'Gold' : 'Expert';
-    const requirements = BADGE_REQUIREMENTS[nextTier];
-    
-    const scoreProgress = (badge.truthScore / requirements.truthScoreMin) * 100;
-    const votesProgress = (badge.totalVotes / requirements.minimumVotes) * 100;
-    const progress = Math.min((scoreProgress + votesProgress) / 2, 100);
-    
-    return {
-      nextTier,
-      progress,
-      requirement: `Need ${requirements.truthScoreMin * 100}% truth score & ${requirements.minimumVotes} votes`,
-    };
-  };
 
   if (!isClient) {
     return (
@@ -145,20 +178,58 @@ export default function DashboardPage() {
 
   return (
     <WalletRequired>
+      {/* Pending status modal */}
+      <Dialog open={showPendingModal} onOpenChange={setShowPendingModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Account pending review
+            </DialogTitle>
+            <DialogDescription>
+              Thanks for registering. Please wait while an admin validates your account.
+              You’ll get full access once approved.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 text-sm text-muted-foreground space-y-1">
+            <div>
+              Current status:&nbsp;
+              <Badge variant="secondary">Pending</Badge>
+            </div>
+            {profile?.roleVerificationSummary?.method && (
+              <div>Verification: {profile.roleVerificationSummary.method}</div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowPendingModal(false)}>
+              Hide
+            </Button>
+            <Button onClick={refreshProfile} disabled={checkingStatus}>
+              {checkingStatus ? 'Checking…' : 'Refresh status'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="container mx-auto px-4 py-12">
-        <div className='flex justify-between'>
+        <div className="flex justify-between">
           <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2 text-gray-700 dark:text-white">{profile.displayName}&apos;s Dashboard</h1>
-          <p className="text-gray-600 dark:text-gray-400">Track your fact-checking performance and earn badges</p>
-        </div>
+            <h1 className="text-4xl font-bold mb-2 text-gray-700 dark:text-white">
+              {profile.displayName}&apos;s Dashboard
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Track your fact-checking performance and earn badges
+            </p>
+          </div>
+
           <Link href="/submit">
-              <Button
-                className="gap-2 bg-[#44ADFF]"
-              >
-                <Plus className="h-4 w-4" />
-                Submit Claim
-              </Button>
-            </Link>
+            <Button className="gap-2 bg-[#44ADFF]">
+              <Plus className="h-4 w-4" />
+              Submit Claim
+            </Button>
+          </Link>
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -166,10 +237,12 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
                 <Target className="h-8 w-8 text-purple-600" />
-                <span className="text-3xl font-bold dark:text-white">{(profile.overallTruthScore * 100).toFixed(0)}%</span>
+                <span className="text-3xl font-bold dark:text-white">
+                  {((profile.overallTruthScore ?? 0) * 100).toFixed(0)}%
+                </span>
               </div>
               <p className="text-gray-600 dark:text-gray-400">Truth Score</p>
-              <Progress value={profile.overallTruthScore * 100} className="mt-2" />
+              <Progress value={(profile.overallTruthScore ?? 0) * 100} className="mt-2" />
             </CardContent>
           </Card>
 
@@ -213,8 +286,10 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {profile.badges.length === 0 ? (
-              <p className="text-gray-500 dark:text-white">No badges yet. Vote on claims to start earning!</p>
+            {(profile.badges ?? []).length === 0 ? (
+              <p className="text-gray-500 dark:text-white">
+                No badges yet. Vote on claims to start earning!
+              </p>
             ) : (
               <div className="space-y-6">
                 {profile.badges.map((badge) => {
@@ -223,32 +298,39 @@ export default function DashboardPage() {
                     <div key={badge.category} className="p-4 bg-gray-50 rounded-lg dark:bg-[#252526]">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                          <Badge className={
-                            badge.tier === 'Expert'
-                              ? 'bg-purple-100 text-purple-800'
-                              : badge.tier === 'Gold'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }>
+                          <Badge
+                            className={
+                              badge.tier === 'Expert'
+                                ? 'bg-purple-100 text-purple-800'
+                                : badge.tier === 'Gold'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }
+                          >
                             {badge.category} {badge.tier}
                           </Badge>
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {badge.totalVotes} votes • {badge.correctVotes} correct
+                            {(badge.totalVotes ?? 0)} votes • {(badge.correctVotes ?? 0)} correct
                           </span>
                         </div>
-                        <Badge 
-                          variant="outline">
-                          {(badge.truthScore * 100).toFixed(0)}% score
+                        <Badge variant="outline">
+                          {((badge.truthScore ?? 0) * 100).toFixed(0)}% score
                         </Badge>
                       </div>
-                      
+
                       <div className="space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600 dark:text-white">Progress to {badgeProgress.nextTier}</span>
-                          <span className="font-medium dark:text-white">{badgeProgress.progress.toFixed(0)}%</span>
+                          <span className="text-gray-600 dark:text-white">
+                            Progress to {badgeProgress.nextTier}
+                          </span>
+                          <span className="font-medium dark:text-white">
+                            {badgeProgress.progress.toFixed(0)}%
+                          </span>
                         </div>
                         <Progress value={badgeProgress.progress} />
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{badgeProgress.requirement}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {badgeProgress.requirement}
+                        </p>
                       </div>
                     </div>
                   );
@@ -306,8 +388,10 @@ export default function DashboardPage() {
                     isCorrect = userVotedTruth === aiSaysTruth;
                   }
 
+                  const stake = Number(vote.stake ?? 0);
+
                   return (
-                    <Card key={vote.id}>
+                    <Card key={vote.id || `${vote.claimId}-${vote.voterAddress || ''}`}>
                       <CardHeader>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -332,11 +416,7 @@ export default function DashboardPage() {
                             {isCorrect !== null && (
                               <Badge
                                 variant={isCorrect ? 'default' : 'secondary'}
-                                className={
-                                  isCorrect
-                                    ? 'bg-green-600'
-                                    : 'bg-gray-500'
-                                }
+                                className={isCorrect ? 'bg-green-600' : 'bg-gray-500'}
                               >
                                 {isCorrect ? '✓ Correct' : '✗ Incorrect'}
                               </Badge>
@@ -346,10 +426,12 @@ export default function DashboardPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="flex justify-between text-sm text-gray-600 mb-2">
-                          <span>Stake: {vote.stake.toFixed(3)} ETH</span>
-                          <span>{new Date(vote.timestamp).toLocaleDateString()}</span>
+                          <span>Stake: {stake.toFixed(3)} ETH</span>
+                          <span>
+                            {vote.timestamp ? new Date(vote.timestamp).toLocaleDateString() : ''}
+                          </span>
                         </div>
-                        {vote.evidence.length > 0 && (
+                        {(vote.evidence || []).length > 0 && (
                           <div className="text-xs text-gray-500">
                             {vote.evidence.length} evidence sources provided
                           </div>

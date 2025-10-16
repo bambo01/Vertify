@@ -498,7 +498,7 @@ export default function RegisterPage() {
       badges: initialBadges,
 
       // Stats (initial)
-      overallTruthScore: 0.5,
+      overallTruthScore: 0,
       totalStaked: 0,
       totalEarned: 0,
     };

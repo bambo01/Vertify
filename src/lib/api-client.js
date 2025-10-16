@@ -79,7 +79,7 @@ class ApiClient {
 
   // ---------- Role verifications (roleBadges + roleVerificationSummary) ----------
   async upsertVerifications(walletAddress, payload) {
-    return this.request(`/users/${toAddr(walletAddress)}/verifications`, {
+    return this.request(`/users/${toAddr(walletAddress)}/status`, {
       method: 'PUT',
       body: JSON.stringify(payload || {}),
     });

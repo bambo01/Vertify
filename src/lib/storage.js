@@ -322,6 +322,8 @@ export const storage = {
   },
 
 // -------------------- Save / Update Profile --------------------
+// -------------------- Save / Update Profile --------------------
+// -------------------- Save / Update Profile --------------------
 async saveUserProfile(profile) {
   if (typeof window === "undefined") return profile;
 
@@ -352,84 +354,189 @@ async saveUserProfile(profile) {
   try {
     const wallet = String(profile.address || profile.walletAddress || "").toLowerCase();
 
-    // Build & sanitize full profile (removes File/Blob and dataUrl)
-    const toSend = deepSanitizeProfile({
+    // --- helpers for Base64 embedding (no data: prefix) ---
+    const MAX_IMAGE_SIZE_BYTES = 1.5 * 1024 * 1024; // 1.5MB cap; tweak if needed
+    const isFileOrBlob = (v) =>
+      v &&
+      typeof v === "object" &&
+      (
+        (typeof File !== "undefined" && v instanceof File) ||
+        (typeof Blob !== "undefined" && v instanceof Blob)
+      );
+
+    const readAsBase64 = (fileOrBlob) =>
+      new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => {
+          const res = String(r.result || "");
+          // r.result is a data URL -> split off the header to keep raw base64 only
+          const base64 = res.includes(",") ? res.split(",")[1] : res;
+          resolve(base64);
+        };
+        r.onerror = reject;
+        r.readAsDataURL(fileOrBlob);
+      });
+
+    const normalizeIdImageToBase64 = async (maybe) => {
+      if (!maybe) return undefined;
+
+      // Direct File/Blob
+      if (isFileOrBlob(maybe)) {
+        const size = maybe.size;
+        const base = { name: maybe.name, type: maybe.type, size };
+        if (size && size <= MAX_IMAGE_SIZE_BYTES) {
+          const base64 = await readAsBase64(maybe);
+          return { ...base, base64 };
+        }
+        return base; // too large → only metadata
+      }
+
+      // Common shape: { file: File }
+      if (isFileOrBlob(maybe.file)) {
+        const f = maybe.file;
+        const size = f.size || maybe.size;
+        const base = { name: f.name || maybe.name, type: f.type || maybe.type, size };
+        if (size && size <= MAX_IMAGE_SIZE_BYTES) {
+          const base64 = await readAsBase64(f);
+          return { ...base, base64 };
+        }
+        return base;
+      }
+
+      // If it already carries a dataUrl, convert to base64 (strip header)
+      if (typeof maybe.dataUrl === "string" && maybe.dataUrl.startsWith("data:")) {
+        const base64 = maybe.dataUrl.split(",")[1] || "";
+        return {
+          name: maybe.name,
+          type: maybe.type,
+          size: maybe.size,
+          base64,
+        };
+      }
+
+      // Already has base64 string?
+      if (typeof maybe.base64 === "string" && maybe.base64.length) {
+        return {
+          name: maybe.name,
+          type: maybe.type,
+          size: maybe.size,
+          base64: maybe.base64,
+        };
+      }
+
+      // Fallback: only metadata
+      return {
+        name: maybe.name,
+        type: maybe.type,
+        size: maybe.size,
+      };
+    };
+
+    // Ensure any verification.idImage uses {name,type,size,base64}
+    const ensureIdImageBase64 = async (p) => {
+      const out = { ...p };
+
+      // roleVerificationSummary.idImage
+      if (out.roleVerificationSummary?.idImage) {
+        out.roleVerificationSummary = { ...out.roleVerificationSummary };
+        out.roleVerificationSummary.idImage = await normalizeIdImageToBase64(
+          out.roleVerificationSummary.idImage
+        );
+      }
+
+      // roleBadges[].verification.idImage
+      if (Array.isArray(out.roleBadges)) {
+        out.roleBadges = await Promise.all(
+          out.roleBadges.map(async (rb) => {
+            const next = { ...rb };
+            if (rb?.verification?.idImage) {
+              next.verification = { ...rb.verification };
+              next.verification.idImage = await normalizeIdImageToBase64(rb.verification.idImage);
+            }
+            return next;
+          })
+        );
+      }
+
+      return out;
+    };
+
+    // 1) Attach base64 to idImage where appropriate
+    const withImages = await ensureIdImageBase64({
       ...profile,
       walletAddress: wallet, // normalize
     });
+
+    // 2) Sanitize (drops File/Blob etc). It will NOT drop `base64` since it only strips "data:" strings.
+    const toSend = deepSanitizeProfile(withImages);
     delete toSend.address; // avoid duplicate field server-side
 
+    // 3) In case sanitizer altered nested structures, ensure the idImage objects remain intact
+    if (withImages.roleVerificationSummary?.idImage) {
+      toSend.roleVerificationSummary = toSend.roleVerificationSummary || {};
+      toSend.roleVerificationSummary.idImage = withImages.roleVerificationSummary.idImage;
+    }
+    if (Array.isArray(withImages.roleBadges)) {
+      const existing = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
+      toSend.roleBadges = withImages.roleBadges.map((rb, i) => {
+        const srb = existing[i] ? { ...existing[i] } : { ...rb };
+        if (rb?.verification?.idImage) {
+          srb.verification = { ...(srb.verification || {}), idImage: rb.verification.idImage };
+        }
+        return srb;
+      });
+    }
+
     // Pull out arrays that we DO NOT include in /auth/register by default
-    const badges      = Array.isArray(toSend.badges) ? toSend.badges : [];
+    const badges       = Array.isArray(toSend.badges) ? toSend.badges : [];
     const categoriesIn = Array.isArray(toSend.categories) ? toSend.categories : [];
-    const roleBadges  = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
+    const roleBadges   = Array.isArray(toSend.roleBadges) ? toSend.roleBadges : [];
     delete toSend.badges;
     delete toSend.categories;
     delete toSend.roleBadges;
 
-    // Derive category names (unique strings) for persistence
+    // Derive unique category names
     const categoriesPlain = Array.from(
       new Set(
         (categoriesIn.length ? categoriesIn : badges.map((b) => b?.category))
-          .map((c) => (c == null ? "" : String(c).trim()))
+          .map((c) => {
+            if (c && typeof c === "object" && c.category) return String(c.category).trim();
+            return c == null ? "" : String(c).trim();
+          })
           .filter(Boolean)
       )
     );
 
-    // Build derived category "badge stubs" you want to preview/send
+    // Derived category “stubs” (for preview/logging only)
     const derivedCategoryBadges = categoriesPlain.map((cat) => ({
       category: cat,
-      tier: "silver",    // starting tier
-      status: "pending", // or "pending_mint"
+      tier: "silver",
+      status: "pending",
     }));
 
-    // If your backend expects/accepts this field, uncomment to send it:
-    // toSend.initialBadges = derivedCategoryBadges;
-
-    // Lightweight preview of roleBadges for logs
-    const roleBadgesPreview = roleBadges.map((rb) => ({
-      role: rb.role,
-      tier: rb.tier,
-      verified: !!rb.verified,
-      verification: rb.verification
-        ? {
-            method: rb.verification.method,
-            idType: rb.verification.idType,
-            idLast4: rb.verification.idLast4,
-            linkedinUrl: rb.verification.linkedinUrl,
-            status: rb.verification.status,
-          }
-        : undefined,
-      badge: rb.badge ? { status: rb.badge.status, tokenId: rb.badge.tokenId } : undefined,
-    }));
-
-    // What we're actually sending to /auth/register (preview only)
-    const registerPayloadPreview = {
+    // Preview log
+    console.log("[storage.saveUserProfile] → /auth/register payload (preview)", {
       walletAddress: toSend.walletAddress,
       displayName: toSend.displayName,
-      status: toSend.status, // e.g. "pending" for new registrations
+      status: toSend.status,
       roles: toSend.roles,
       city: toSend.city,
       province: toSend.province,
       country: toSend.country,
-      roleVerificationSummary: toSend.roleVerificationSummary || undefined,
+      roleVerificationSummary: toSend.roleVerificationSummary || undefined, // contains idImage.base64 if present
       registeredAt: toSend.registeredAt,
       residencyAttestationRef: toSend.residencyAttestationRef,
       overallTruthScore: toSend.overallTruthScore,
       totalStaked: toSend.totalStaked,
       totalEarned: toSend.totalEarned,
-
-      // ⬇️ now objects: { category, tier, status }
       __derivedCategories__: derivedCategoryBadges,
-    };
+    });
 
-    console.log("[storage.saveUserProfile] → /auth/register payload (preview)", registerPayloadPreview);
-
-    // Send to /auth/register
+    // 4) POST /auth/register
     const savedUser = await apiClient.register(toSend);
     console.log("[storage.saveUserProfile] ← /auth/register response", savedUser);
 
-    // Persist badges separately (server can also derive categories from them)
+    // 5) Persist badges separately
     if (badges.length > 0) {
       console.log(`[storage.saveUserProfile] → /users/${wallet}/badges payload`, badges);
       const badgesResp = await apiClient.updateUserBadges(wallet, badges);
@@ -438,40 +545,33 @@ async saveUserProfile(profile) {
       console.log("[storage.saveUserProfile] (no badges to persist)");
     }
 
-    // Persist plain category names explicitly
-    // Persist full category objects instead of plain strings
+    // 6) Persist structured categories (objects)
     if (categoriesPlain.length > 0) {
-      // build structured payload for backend
       const categoriesPayload = categoriesPlain.map((cat) => ({
         category: cat,
         tier: "silver",
         status: "pending",
       }));
-
       console.log(`[storage.saveUserProfile] → /users/${wallet}/categories payload`, categoriesPayload);
-
       const categoriesResp = await apiClient.updateUserCategories(wallet, categoriesPayload);
       console.log(`[storage.saveUserProfile] ← /users/${wallet}/categories response`, categoriesResp);
     } else {
       console.log("[storage.saveUserProfile] (no categories to persist)");
     }
 
-
-    // (Optional future: roleBadges endpoint)
+    // (Optional) roleBadges upsert later if you add a backend endpoint
     // if (roleBadges.length) await apiClient.upsertVerifications(wallet, { roleBadges });
 
     const normalized = {
       ...profile,
       ...savedUser,
       address: savedUser.walletAddress || wallet,
-      // Prefer categories from server; otherwise fall back to derived ones
       categories:
         Array.isArray(savedUser?.categories) && savedUser.categories.length
           ? savedUser.categories
           : categoriesPlain,
     };
 
-    // Final summary log
     console.log("[storage.saveUserProfile] SUMMARY", {
       savedForWallet: normalized.address,
       sentToRegisterKeys: Object.keys(toSend),
@@ -479,8 +579,6 @@ async saveUserProfile(profile) {
       categoriesInResponse: normalized.categories,
       badgesCount: badges.length,
       roleBadgesCount: roleBadges.length,
-      roleBadgesPreview,
-      // show what we derived for initial badge stubs
       derivedCategoryBadges,
     });
 
@@ -490,6 +588,7 @@ async saveUserProfile(profile) {
     throw error;
   }
 },
+
 
 
 
@@ -582,10 +681,74 @@ async saveUserProfile(profile) {
     return claims.filter((c) => c.category === category);
   },
 
+  
+  async listProfiles() {
+  if (typeof window === "undefined") return [];
+  try {
+    const backend = await apiClient.getAllUsers();
+
+    // Normalize so Admin table has stable fields: address, displayName, roleBadges, etc.
+    const users = Array.isArray(backend) ? backend : (backend?.users || []);
+    return users.map(u => ({
+      ...u,
+      address: (u.address || u.walletAddress || '').toLowerCase(),
+      displayName: u.displayName || (u.walletAddress ? u.walletAddress.slice(0,6) : 'User'),
+      roleBadges: Array.isArray(u.roleBadges) ? u.roleBadges : [],  // [{ role, tier, verified, verification:{...} }]
+    }));
+  } catch (e) {
+    console.error("[storage.listProfiles] ERROR", e?.status, e?.data || e);
+    return [];
+  }
+},
+
+/**
+ * Admin: approve/reject a specific role verification for a wallet
+ * params: { address, role, status, reviewer }
+ *   - status: 'approved' | 'rejected'
+ */
+async updateVerification({ address, role, status, reviewer }) {
+  if (!address || !role || !status) {
+    throw new Error("address, role, and status are required");
+  }
+  const wallet = String(address).toLowerCase();
+
+  try {
+    // Fetch current to preserve any existing verification fields
+    const current = await this.getUserProfile(wallet);
+
+    // find existing role badge (if any)
+    const existing = (current?.roleBadges || []).find(rb => rb.role === role);
+
+    const updatedVerification = {
+      ...(existing?.verification || {}),
+      status,                 // 'approved' | 'rejected'
+      reviewer: reviewer || undefined,
+      reviewedAt: new Date().toISOString(),
+    };
+
+    // Shape payload for backend upsert (single role)
+    const payload = {
+      updates: [
+        {
+          role,
+          verification: updatedVerification,
+        },
+      ],
+    };
+
+    // PUT /users/:wallet/verifications
+    const resp = await apiClient.upsertVerifications(wallet, payload);
+    return resp;
+  } catch (e) {
+    console.error("[storage.updateVerification] ERROR", e?.status, e?.data || e);
+    throw e;
+  }
+},
+
   clearAll() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(CLAIMS_KEY);
     localStorage.removeItem(VOTES_KEY);
     localStorage.removeItem(USERS_KEY);
   },
-};
+}; 

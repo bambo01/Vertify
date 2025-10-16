@@ -90,55 +90,55 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#1A2745]">
-<section className="relative isolate min-h-screen overflow-hidden">
-  {/* BG image + overlay */}
-  <div
-    aria-hidden
-    className="
+      <section className="relative isolate min-h-screen overflow-hidden">
+        {/* BG image + overlay */}
+        <div
+          aria-hidden
+          className="
       pointer-events-none absolute inset-x-0 bottom-0 z-0
       h-[260px] md:h-[340px] lg:h-[470px] xl:h-[630px]
       bg-[url('/main.webp')] dark:bg-[url('/main1.webp')]
       bg-no-repeat bg-bottom bg-contain
     "
-  />
+        />
 
-  {/* Content */}
-  <div className="relative z-10 text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
-    <h1 className="text-2xl md:text-5xl font-medium leading-[1.15] md:leading-[1.12] pb-[2px] mb-6">
-      <span className="bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA]
+        {/* Content */}
+        <div className="relative z-10 text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
+          <h1 className="text-2xl md:text-5xl font-medium leading-[1.15] md:leading-[1.12] pb-[2px] mb-6">
+            <span
+              className="bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA]
                        dark:from-[#5EC7F3] dark:to-[#FFFFFF]
-                       bg-clip-text text-transparent">
-        Transforming Fact-Checking into a Fun and Rewarding Experience
-      </span>
-    </h1>
+                       bg-clip-text text-transparent"
+            >
+              Transforming Fact-Checking into a Fun and Rewarding Experience
+            </span>
+          </h1>
 
-    <p className="text-sm md:text-lg font-light mb-5 mx-auto max-w-[44rem]">
-      Helping people trust what they read through fact-checking and earn
-      for being accurate — secured on Base.
-    </p>
+          <p className="text-sm md:text-lg font-light mb-5 mx-auto max-w-[44rem]">
+            Helping people trust what they read through fact-checking and earn
+            for being accurate — secured on Base.
+          </p>
 
-    <div className="flex gap-4 justify-center flex-wrap">
-      <Link href="/explore">
-        <Button
-          size="lg"
-          className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-80"
-        >
-          Explore Claims
-        </Button>
-      </Link>
-      <Link href="/submit">
-        <Button
-          size="lg"
-          className="bg-white text-black border border-gray-200"
-        >
-          Submit Claim
-        </Button>
-      </Link>
-    </div>
-  </div>
-</section>
-
-
+          <div className="flex gap-4 justify-center flex-wrap">
+            <Link href="/explore">
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-80"
+              >
+                Explore Claims
+              </Button>
+            </Link>
+            <Link href="/submit">
+              <Button
+                size="lg"
+                className="bg-white text-black border border-gray-200"
+              >
+                Submit Claim
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
 
       {/* HOW IT WORKS */}
       <section
@@ -400,7 +400,7 @@ export default function HomePage() {
 
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             {/* Explore Claims */}
-            <div className="relative overflow-hidden rounded-xl bg-gray-400 dark:bg-white/10 ring-1 ring-white/10">
+            <div className="relative overflow-hidden rounded-xl bg-orange-200 dark:bg-white/10 ring-1 ring-white/10">
               <div className="p-6 md:p-8">
                 <h3 className="text-2xl font-medium text-gray-700 dark:text-white/90">
                   Explore Claims
@@ -421,9 +421,9 @@ export default function HomePage() {
               </div>
               {/* image on right */}
               <img
-                src="/cta-explore.webp" /* put this in /public (or change the path) */
+                src="/box.webp" /* put this in /public (or change the path) */
                 alt=""
-                className="pointer-events-none select-none absolute right-3 bottom-2 h-28 md:h-32 w-auto rounded-lg object-contain"
+                className="pointer-events-none select-none absolute right-0 -bottom-2 h-28 md:h-52 w-auto rounded-lg object-contain"
               />
             </div>
 
@@ -431,7 +431,7 @@ export default function HomePage() {
             <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#0e76ff] to-[#2a52ff] ring-1 ring-white/10">
               <div className="p-6 md:p-8">
                 <h3 className="text-2xl font-medium">Submit Your Claim</h3>
-                <p className="mt-2 max-w-md text-sm text-white/90">
+                <p className="mt-2 max-w-sm text-sm text-white/90">
                   Submit your claim, share credible sources, and help create a
                   trustworthy space where accuracy is rewarded.
                 </p>
@@ -575,8 +575,8 @@ export default function HomePage() {
               © {new Date().getFullYear()} Verity. All rights reserved.
             </p>
             <div className="flex items-center gap-5">
-              {/* Dark mode switch lives here */}
-              <ThemeToggle />
+              {/* Dark mode switch lives here 
+              <ThemeToggle />*/}
               <a
                 href="#"
                 aria-label="LinkedIn"

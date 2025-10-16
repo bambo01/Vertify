@@ -11,10 +11,12 @@ Fixed **5 critical issues** preventing TruthChain from working, including client
 ### **1. Client-Side Exception: "Application error" (FIXED ✅)**
 
 **Symptom:**
+
 - Error when clicking "Custom" in Submit Claims
 - Message: "Application error: a client-side exception has occurred"
 
 **Root Cause:**
+
 ```jsx
 // ❌ WRONG - Empty string values violate accessibility
 <SelectItem value="">Any country</SelectItem>
@@ -23,6 +25,7 @@ Fixed **5 critical issues** preventing TruthChain from working, including client
 ```
 
 **Fix Applied:**
+
 ```jsx
 // ✅ CORRECT - Use placeholder value
 <SelectItem value="_any">Any country</SelectItem>
@@ -31,6 +34,7 @@ Fixed **5 critical issues** preventing TruthChain from working, including client
 ```
 
 **Files Modified:**
+
 - `src/components/voter-scope-selector.jsx` (lines 198, 221, 245)
 
 **Impact:** ✅ Custom voter scope selector now works without errors
@@ -40,11 +44,13 @@ Fixed **5 critical issues** preventing TruthChain from working, including client
 ### **2. Cannot Submit Claims or Vote (FIXED ✅)**
 
 **Symptom:**
+
 - Submit button clicks do nothing
 - Votes don't save
 - No error messages shown
 
 **Root Cause:**
+
 ```javascript
 // ❌ WRONG - Trying to use backend API without backend running
 const USE_LOCALSTORAGE = false; // Backend not running!
@@ -54,18 +60,20 @@ const USE_LOCALSTORAGE = false; // Backend not running!
 ```
 
 **Fix Applied:**
+
 ```javascript
 // ✅ CORRECT - Use localStorage by default
-const USE_LOCALSTORAGE = true;
+const USE_LOCALSTORAGE = false;
 
 // Added clear documentation:
-// NOTE: Backend requires MongoDB running on localhost:27017 
+// NOTE: Backend requires MongoDB running on localhost:27017
 // and server running on port 5000
-// To use backend: Start MongoDB, run 'npm run server:dev', 
+// To use backend: Start MongoDB, run 'npm run server:dev',
 // then set USE_LOCALSTORAGE = false
 ```
 
 **Files Modified:**
+
 - `src/lib/storage.js` (lines 10-13)
 
 **Impact:** ✅ App now works immediately without backend setup
@@ -75,11 +83,13 @@ const USE_LOCALSTORAGE = true;
 ### **3. Data Model Mismatches (FIXED ✅)**
 
 **Symptom:**
+
 - Data saved to backend doesn't load in frontend
 - Claims show as "not found" after submission
 - Votes don't appear in dashboard
 
 **Root Cause:**
+
 ```javascript
 // ❌ FRONTEND saves claim with:
 {
@@ -101,11 +111,12 @@ claims.find(c => c.id === claimId)  // Looking for 'id'
 ```
 
 **Fix Applied:**
+
 ```javascript
 // ✅ CORRECT - Added data normalization layer
 async getClaim(claimId) {
   const backendClaim = await apiClient.getClaim(claimId);
-  
+
   // Normalize backend data to frontend format
   if (backendClaim && backendClaim.claimId) {
     return {
@@ -124,9 +135,11 @@ vote: vote.position,         // Map position → vote
 ```
 
 **Files Modified:**
+
 - `src/lib/storage.js` (multiple functions updated)
 
 **All Data Conversions Added:**
+
 - Claims: `claimId` ↔ `id`
 - Claims: `poster` ↔ `authorAddress`
 - Claims: `postedAt` ↔ `createdAt`
@@ -141,17 +154,21 @@ vote: vote.position,         // Map position → vote
 ### **4. Geographic Filtering Logic Bug (FIXED ✅)**
 
 **Symptom:**
+
 - Custom voter scope doesn't restrict voters correctly
 - Setting multiple geo filters (country + province) only checks one
 
 **Root Cause:**
+
 ```javascript
 // ❌ WRONG - Only checks ONE geo level
 if (cities.length > 0) {
   // Check cities
-} else if (provinces.length > 0) {  // ← else if!
+} else if (provinces.length > 0) {
+  // ← else if!
   // Check provinces
-} else if (countries.length > 0) {  // ← else if!
+} else if (countries.length > 0) {
+  // ← else if!
   // Check countries
 }
 
@@ -159,6 +176,7 @@ if (cities.length > 0) {
 ```
 
 **Example Bug:**
+
 ```javascript
 // Claim requires: USA AND California AND San Francisco
 voterScope: {
@@ -175,23 +193,26 @@ voterScope: {
 ```
 
 **Fix Applied:**
+
 ```javascript
 // ✅ CORRECT - Check ALL specified levels (intersection logic)
 if (countries.length > 0) {
   if (!countries.includes(userProfile.country)) {
-    failedChecks.push(`Must be from ${countries.join(' or ')}`);
+    failedChecks.push(`Must be from ${countries.join(" or ")}`);
   }
 }
 
-if (provinces.length > 0) {  // ← Independent 'if', not 'else if'
+if (provinces.length > 0) {
+  // ← Independent 'if', not 'else if'
   if (!provinces.includes(userProfile.province)) {
-    failedChecks.push(`Must be from ${provinces.join(' or ')} province`);
+    failedChecks.push(`Must be from ${provinces.join(" or ")} province`);
   }
 }
 
-if (cities.length > 0) {  // ← Independent 'if', not 'else if'
+if (cities.length > 0) {
+  // ← Independent 'if', not 'else if'
   if (!cities.includes(userProfile.city)) {
-    failedChecks.push(`Must be from ${cities.join(' or ')}`);
+    failedChecks.push(`Must be from ${cities.join(" or ")}`);
   }
 }
 
@@ -199,6 +220,7 @@ if (cities.length > 0) {  // ← Independent 'if', not 'else if'
 ```
 
 **Files Modified:**
+
 - `src/lib/eligibility.js` (lines 44-67)
 
 **Impact:** ✅ Geographic filtering now works as intersection (AND logic)
@@ -208,44 +230,47 @@ if (cities.length > 0) {  // ← Independent 'if', not 'else if'
 ### **5. Async/Await Issues in Multiple Pages (FIXED ✅)**
 
 **Symptom:**
+
 - Pages hang on loading
 - React warnings about missing async
 - Hooks called conditionally
 
 **Root Cause:**
+
 ```jsx
 // ❌ WRONG - Calling hooks after conditional return
 export default function DashboardPage() {
   const { address } = useAccount();
-  
+
   useEffect(() => {
     if (!address) {
-      router.push('/register');  // ← Early return
+      router.push("/register"); // ← Early return
       return;
     }
     // Hook called AFTER conditional logic
   }, []);
-  
-  const [profile, setProfile] = useState(null);  // ← Violates Rules of Hooks!
+
+  const [profile, setProfile] = useState(null); // ← Violates Rules of Hooks!
 }
 ```
 
 **Fix Applied:**
+
 ```jsx
 // ✅ CORRECT - All hooks at top level
 export default function DashboardPage() {
   const { address } = useAccount();
   const router = useRouter();
-  const [profile, setProfile] = useState(null);  // ← All hooks first
+  const [profile, setProfile] = useState(null); // ← All hooks first
   const [isClient, setIsClient] = useState(false);
-  
+
   useEffect(() => {
     setIsClient(true);
     const loadData = async () => {
       if (address) {
         const userProfile = await storage.getUserProfile(address);
         if (!userProfile) {
-          router.push('/register');  // ← Safe inside effect
+          router.push("/register"); // ← Safe inside effect
           return;
         }
         setProfile(userProfile);
@@ -253,12 +278,13 @@ export default function DashboardPage() {
     };
     loadData();
   }, [address, router]);
-  
+
   // Rest of component...
 }
 ```
 
 **Files Modified:**
+
 - `src/app/register/page.jsx`
 - `src/app/submit/page.jsx`
 - `src/app/dashboard/page.jsx`
@@ -273,6 +299,7 @@ export default function DashboardPage() {
 ## 📊 Testing Results
 
 ### **Before Fixes:**
+
 - ❌ Custom voter scope: Crashes
 - ❌ Submit claims: Fails silently
 - ❌ Vote on claims: Nothing happens
@@ -280,6 +307,7 @@ export default function DashboardPage() {
 - ❌ Backend integration: Data mismatch errors
 
 ### **After Fixes:**
+
 - ✅ Custom voter scope: Works perfectly
 - ✅ Submit claims: Saves to localStorage
 - ✅ Vote on claims: Saves and displays
@@ -291,21 +319,25 @@ export default function DashboardPage() {
 ## 🎯 Verification Steps
 
 1. **Test Custom Voter Scope:**
+
    ```
    Go to Submit → Select category → Choose "Custom" → No errors ✅
    ```
 
 2. **Test Claim Submission:**
+
    ```
    Submit → Fill form → Click submit → Redirects to claim detail ✅
    ```
 
 3. **Test Voting:**
+
    ```
    Explore → Click claim → Vote → Evidence → Submit → Success ✅
    ```
 
 4. **Test Dashboard:**
+
    ```
    Dashboard → See claims → See votes → See badges ✅
    ```
@@ -363,19 +395,19 @@ export default function DashboardPage() {
 
 ## 📦 Files Changed Summary
 
-| File | Changes | Lines Modified |
-|------|---------|----------------|
-| `src/lib/storage.js` | Data normalization, localStorage toggle | 100+ lines |
-| `src/components/voter-scope-selector.jsx` | Fixed empty SelectItem values | 3 lines |
-| `src/lib/eligibility.js` | Fixed intersection logic | 24 lines |
-| `src/app/register/page.jsx` | Fixed async/hooks issues | 20+ lines |
-| `src/app/submit/page.jsx` | Fixed async/hooks issues | 15+ lines |
-| `src/app/dashboard/page.jsx` | Complete rewrite for hooks | 50+ lines |
-| `src/app/explore/page.jsx` | Fixed async issues | 10+ lines |
-| `src/app/vote/[id]/page.jsx` | Fixed storage calls | 15+ lines |
-| `src/app/claim/[id]/page.jsx` | Fixed storage calls | 20+ lines |
-| `SETUP.md` | Created comprehensive guide | New file |
-| `BUGS_FIXED.md` | This document | New file |
+| File                                      | Changes                                 | Lines Modified |
+| ----------------------------------------- | --------------------------------------- | -------------- |
+| `src/lib/storage.js`                      | Data normalization, localStorage toggle | 100+ lines     |
+| `src/components/voter-scope-selector.jsx` | Fixed empty SelectItem values           | 3 lines        |
+| `src/lib/eligibility.js`                  | Fixed intersection logic                | 24 lines       |
+| `src/app/register/page.jsx`               | Fixed async/hooks issues                | 20+ lines      |
+| `src/app/submit/page.jsx`                 | Fixed async/hooks issues                | 15+ lines      |
+| `src/app/dashboard/page.jsx`              | Complete rewrite for hooks              | 50+ lines      |
+| `src/app/explore/page.jsx`                | Fixed async issues                      | 10+ lines      |
+| `src/app/vote/[id]/page.jsx`              | Fixed storage calls                     | 15+ lines      |
+| `src/app/claim/[id]/page.jsx`             | Fixed storage calls                     | 20+ lines      |
+| `SETUP.md`                                | Created comprehensive guide             | New file       |
+| `BUGS_FIXED.md`                           | This document                           | New file       |
 
 **Total:** 11 files modified, 250+ lines changed
 
@@ -384,6 +416,7 @@ export default function DashboardPage() {
 ## ✅ Current State
 
 ### **✅ Fully Working Features:**
+
 - ✅ User registration with roles, geo, and categories
 - ✅ Claim submission with custom voter scopes
 - ✅ Voting with evidence requirements
@@ -395,6 +428,7 @@ export default function DashboardPage() {
 - ✅ localStorage persistence
 
 ### **✅ Backend Ready (Optional):**
+
 - ✅ Express REST API
 - ✅ MongoDB models
 - ✅ Data normalization layer
