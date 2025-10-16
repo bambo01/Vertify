@@ -18,7 +18,7 @@
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.0.1",
     "@nomiclabs/hardhat-ethers": "2.2.3",
-    "@openzeppelin/contracts": "5.4.0",
+    "@openzeppelin/contracts": "^5.4.0",
     "@prisma/client": "^5.11.0",
     "@radix-ui/react-accordion": "^1.2.10",
     "@radix-ui/react-alert-dialog": "^1.1.13",
@@ -109,5 +109,18 @@
   "overrides": {
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6"
-  }
+  },
+  "description": "TruthChain is a blockchain-based fact-checking platform built on Base that rewards accuracy and creates transparent, auditable records of community fact-checks.",
+  "main": "components.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bambo01/Verity.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bambo01/Verity/issues"
+  },
+  "homepage": "https://github.com/bambo01/Verity#readme"
 }
