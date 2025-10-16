@@ -168,7 +168,7 @@ function Dashboard() {
       const wasLive = live;
       if (wasLive) setLive(false);
 
-      await storage.updateVerification({
+      await storage.updateUserStatus({
         address: row.address,
         role: row.role,
         status, // 'approved' | 'rejected'

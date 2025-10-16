@@ -745,6 +745,18 @@ async updateVerification({ address, role, status, reviewer }) {
   }
 },
 
+async updateUserStatus({ address, status }) {
+  if (!address || !status) throw new Error("address and status are required");
+  const wallet = String(address).toLowerCase();
+  try {
+    const resp = await apiClient.updateUserStatus(wallet, status);
+    return resp;
+  } catch (e) {
+    console.error("[storage.updateUserStatus] ERROR", e?.status, e?.data || e);
+    throw e;
+  }
+},
+
   clearAll() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(CLAIMS_KEY);

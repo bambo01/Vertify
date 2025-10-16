@@ -77,13 +77,27 @@ class ApiClient {
     });
   }
 
-  // ---------- Role verifications (roleBadges + roleVerificationSummary) ----------
-  async upsertVerifications(walletAddress, payload) {
-    return this.request(`/users/${toAddr(walletAddress)}/status`, {
-      method: 'PUT',
-      body: JSON.stringify(payload || {}),
-    });
-  }
+ // ---------- Role verifications (roleBadges + roleVerificationSummary) ----------
+async upsertVerifications(walletAddress, payload) {
+  return this.request(`/users/${toAddr(walletAddress)}/status`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? { updates: [] }),
+  });
+}
+
+
+
+// --- Update overall user status (approved | rejected)
+async updateUserStatus(walletAddress, status) {
+  return this.request(`/users/${toAddr(walletAddress)}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
+
 
   // ---------- Claims ----------
   async getAllClaims(filters = {}) {
