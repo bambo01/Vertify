@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import { WalletRequired } from '@/components/wallet-connect';
@@ -13,13 +13,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { storage } from '@/lib/storage';
 import { generateEligibilitySnapshotHash } from '@/lib/eligibility';
-import { CATEGORIES } from '@/lib/constants';
 import { toast } from 'sonner';
 import { FileText, Loader2 } from 'lucide-react';
 
 export default function SubmitPage() {
   const { address } = useAccount();
   const router = useRouter();
+
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [summary, setSummary] = useState('');
@@ -28,15 +28,19 @@ export default function SubmitPage() {
     everyone: true,
     requireCategory: false,
     allowedRoles: [],
-    allowedGeo: {
-      cities: [],
-      provinces: [],
-      countries: [],
-    },
+    allowedGeo: { cities: [], provinces: [], countries: [] },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profile, setProfile] = useState(null);
   const [isClient, setIsClient] = useState(false);
+  const [pinResult, setPinResult] = useState(null);
+
+  // Voting schedule state
+  const [votingMode, setVotingMode] = useState('preset'); // 'preset' | 'custom' | 'endtime'
+  const [presetDuration, setPresetDuration] = useState('86400'); // default 24h in seconds
+  const [customNumber, setCustomNumber] = useState('24');        // e.g., "24"
+  const [customUnit, setCustomUnit] = useState('hours');         // 'minutes' | 'hours' | 'days'
+  const [endTimeLocal, setEndTimeLocal] = useState('');          // yyyy-MM-ddTHH:mm (local)
 
   useEffect(() => {
     setIsClient(true);
@@ -54,68 +58,126 @@ export default function SubmitPage() {
     loadProfile();
   }, [address, router]);
 
+  // Normalize categories to strings and only allow minted ones
+  const userCategories = useMemo(() => {
+    const arr = profile?.categories || [];
+    const onlyMinted = arr
+      .filter((c) => (typeof c === 'object' ? c.status === 'minted' : true))
+      .map((c) => (typeof c === 'string' ? c : c.category))
+      .map((s) => s?.trim())
+      .filter(Boolean);
+    const seen = new Set();
+    return onlyMinted.filter((c) => (seen.has(c.toLowerCase()) ? false : (seen.add(c.toLowerCase()), true)));
+  }, [profile]);
+
+  // Auto-select first category
+  useEffect(() => {
+    if (!category && userCategories.length) setCategory(userCategories[0]);
+  }, [userCategories, category]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!address || !profile) return;
 
+    // Basic validation
     if (!title.trim() || !url.trim() || !summary.trim() || !category) {
       toast.error('Please fill in all fields');
       return;
     }
-
     try {
+      // eslint-disable-next-line no-new
       new URL(url);
     } catch {
       toast.error('Please enter a valid URL');
       return;
     }
-
-    if (!profile.categories.includes(category)) {
+    const canSubmit = userCategories.some((c) => c.toLowerCase() === String(category).toLowerCase());
+    if (!canSubmit) {
       toast.error(`You need a badge in ${category} to submit claims in this category`);
       return;
     }
 
+    // Derive final votingDurationSec from schedule controls
+    let finalDurationSec = 0;
+    if (votingMode === 'preset') {
+      finalDurationSec = parseInt(presetDuration, 10);
+    } else if (votingMode === 'custom') {
+      const n = parseInt(customNumber, 10);
+      if (!Number.isFinite(n) || n <= 0) {
+        toast.error('Custom duration must be a positive number');
+        return;
+      }
+      const unitMult = customUnit === 'minutes' ? 60 : customUnit === 'hours' ? 3600 : 86400;
+      finalDurationSec = n * unitMult;
+    } else if (votingMode === 'endtime') {
+      if (!endTimeLocal) {
+        toast.error('Please select an end date & time');
+        return;
+      }
+      const endMs = new Date(endTimeLocal).getTime();
+      const diffSec = Math.floor((endMs - Date.now()) / 1000);
+      finalDurationSec = diffSec;
+    }
+    const MIN = 60; // 1 minute
+    const MAX = 60 * 60 * 24 * 30; // 30 days
+    if (!Number.isFinite(finalDurationSec) || finalDurationSec < MIN || finalDurationSec > MAX) {
+      toast.error('Voting duration must be between 1 minute and 30 days');
+      return;
+    }
+
     setIsSubmitting(true);
-
     try {
-      const mockTxHash = `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`;
-      const mockCid = `Qm${Math.random().toString(36).substring(2, 15)}`;
-      const mockDataHash = `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`;
-
-      const claim = {
-        id: `claim-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      // Canonical metadata (server will pin to Pinata)
+      const claimMeta = {
         title: title.trim(),
         url: url.trim(),
         summary: summary.trim(),
-        category: category,
-        author: profile.displayName,
-        authorAddress: address,
-        createdAt: Date.now(),
-        votingEndsAt: Date.now() + (45 * 1000),
-        status: 'voting',
-        truthVotes: 0,
-        fakeVotes: 0,
-        truthStake: 0,
-        fakeStake: 0,
-        truthWeight: 0,
-        fakeWeight: 0,
-        evidence: [],
-        txHash: mockTxHash,
-        ipfsCid: mockCid,
-        dataHash: mockDataHash,
-        
-        // v2.1: Voter scope
-        voterScope: voterScope,
-        eligibilitySnapshotHash: generateEligibilitySnapshotHash({ voterScope }),
+        category,
+        poster: String(address).toLowerCase(),
+        createdAt: new Date().toISOString(),
+        voterScope,
+        eligibilityHash: generateEligibilitySnapshotHash({ voterScope }), // server may override
+        votingDurationSec: finalDurationSec,
       };
+      console.log('my Meta: ', claimMeta);
 
-      await storage.saveClaim(claim);
+      // Ask Railway backend to pin + allocate IDs
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/claims/init`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: claimMeta.title,
+          url: claimMeta.url,
+          summary: claimMeta.summary,
+          category: claimMeta.category,
+          voterScope: claimMeta.voterScope,
+          poster: claimMeta.poster,
+          eligibilityHash: claimMeta.eligibilityHash, // optional
+          votingDurationSec: finalDurationSec,
+        }),
+      });
 
-      toast.success('Claim submitted successfully! 🎉');
-      router.push(`/claim/${claim.id}`);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error || 'Pin/init failed');
+      }
+
+      const json = await resp.json();
+      const cid = json.cid || json.IpfsHash;
+      const claimId = json.claimId;
+      const eligibilityHash = json.eligibilityHash || claimMeta.eligibilityHash;
+      const votingDurationSec = json.votingDurationSec || finalDurationSec;
+
+      setPinResult({ cid, claimId, eligibilityHash, votingDurationSec });
+      const shortCid = cid && cid.length > 12 ? `${cid.slice(0, 8)}…${cid.slice(-6)}` : cid;
+      toast.success(`Pinned to IPFS ✅ CID: ${shortCid}`);
+
+      // Step 2 (next): call the contract with { claimId, cid, votingDurationSec, eligibilityHash }
+      // Step 3: call /claims/finalize with { claimId, txHash, ... } to persist DB
+
     } catch (error) {
-      toast.error('Failed to submit claim');
       console.error(error);
+      toast.error(error?.message || 'Failed to pin claim');
     } finally {
       setIsSubmitting(false);
     }
@@ -125,8 +187,8 @@ export default function SubmitPage() {
     return (
       <div className="container mx-auto px-4 py-8 sm:py-12">
         <div className="animate-pulse space-y-4">
-          <div className="h-12 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+          <div className="h-12 bg-gray-200 rounded w-1/3" />
+          <div className="h-64 bg-gray-200 rounded" />
         </div>
       </div>
     );
@@ -150,17 +212,15 @@ export default function SubmitPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Category */}
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
-                  <Select
-                    value={category}
-                    onValueChange={(value) => setCategory(value)}
-                  >
-                    <SelectTrigger>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger id="category">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {profile?.categories.map((cat) => (
+                      {userCategories.map((cat) => (
                         <SelectItem key={cat} value={cat}>
                           {cat}
                         </SelectItem>
@@ -168,10 +228,11 @@ export default function SubmitPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500">
-                    You can only submit claims in categories where you have badges
+                    You can only submit claims in categories where you have minted badges
                   </p>
                 </div>
 
+                {/* Title */}
                 <div className="space-y-2">
                   <Label htmlFor="title">Claim Title *</Label>
                   <Input
@@ -184,6 +245,7 @@ export default function SubmitPage() {
                   />
                 </div>
 
+                {/* URL */}
                 <div className="space-y-2">
                   <Label htmlFor="url">Source URL *</Label>
                   <Input
@@ -193,11 +255,10 @@ export default function SubmitPage() {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                   />
-                  <p className="text-xs text-gray-500">
-                    Link to the article or source making the claim
-                  </p>
+                  <p className="text-xs text-gray-500">Link to the article or source making the claim</p>
                 </div>
 
+                {/* Summary */}
                 <div className="space-y-2">
                   <Label htmlFor="summary">Summary *</Label>
                   <Textarea
@@ -208,32 +269,140 @@ export default function SubmitPage() {
                     rows={4}
                     maxLength={500}
                   />
-                  <p className="text-xs text-gray-500">
-                    {summary.length}/500 characters
-                  </p>
+                  <p className="text-xs text-gray-500">{summary.length}/500 characters</p>
                 </div>
 
-                {/* v2.1: Voter Scope Selector */}
+                {/* Voter Scope & Voting Schedule */}
                 {category && (
-                  <VoterScopeSelector
-                    claimCategory={category}
-                    voterScope={voterScope}
-                    onChange={setVoterScope}
-                  />
+                  <>
+                    <VoterScopeSelector
+                      claimCategory={category}
+                      voterScope={voterScope}
+                      onChange={setVoterScope}
+                    />
+
+                    {/* Voting Schedule */}
+                    <div className="space-y-3 mt-6">
+                      <Label>Voting Schedule</Label>
+
+                      {/* Mode selector */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Button
+                          type="button"
+                          variant={votingMode === 'preset' ? 'default' : 'outline'}
+                          onClick={() => setVotingMode('preset')}
+                        >
+                          Presets
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={votingMode === 'custom' ? 'default' : 'outline'}
+                          onClick={() => setVotingMode('custom')}
+                        >
+                          Custom duration
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={votingMode === 'endtime' ? 'default' : 'outline'}
+                          onClick={() => setVotingMode('endtime')}
+                        >
+                          End date & time
+                        </Button>
+                      </div>
+
+                      {/* Presets */}
+                      {votingMode === 'preset' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="presetDuration">Choose a preset</Label>
+                          <Select value={presetDuration} onValueChange={setPresetDuration}>
+                            <SelectTrigger id="presetDuration">
+                              <SelectValue placeholder="Select duration" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="900">15 minutes</SelectItem>
+                              <SelectItem value="1800">30 minutes</SelectItem>
+                              <SelectItem value="3600">1 hour</SelectItem>
+                              <SelectItem value="21600">6 hours</SelectItem>
+                              <SelectItem value="43200">12 hours</SelectItem>
+                              <SelectItem value="86400">24 hours</SelectItem>
+                              <SelectItem value="172800">48 hours</SelectItem>
+                              <SelectItem value="259200">72 hours</SelectItem>
+                              <SelectItem value="604800">7 days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-gray-500">Common windows like 24h or 48h.</p>
+                        </div>
+                      )}
+
+                      {/* Custom duration */}
+                      {votingMode === 'custom' && (
+                        <div className="grid grid-cols-3 gap-2 items-end">
+                          <div className="col-span-2 space-y-2">
+                            <Label htmlFor="customNumber">Amount</Label>
+                            <Input
+                              id="customNumber"
+                              type="number"
+                              min={1}
+                              value={customNumber}
+                              onChange={(e) => setCustomNumber(e.target.value)}
+                              placeholder="e.g., 36"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="customUnit">Unit</Label>
+                            <Select value={customUnit} onValueChange={setCustomUnit}>
+                              <SelectTrigger id="customUnit">
+                                <SelectValue placeholder="Unit" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="minutes">Minutes</SelectItem>
+                                <SelectItem value="hours">Hours</SelectItem>
+                                <SelectItem value="days">Days</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="col-span-3">
+                            <p className="text-xs text-gray-500">
+                              Enter any duration (e.g., 36 hours). Min 1 minute; Max 30 days.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* End date & time */}
+                      {votingMode === 'endtime' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="endTimeLocal">Ends at</Label>
+                          <Input
+                            id="endTimeLocal"
+                            type="datetime-local"
+                            value={endTimeLocal}
+                            onChange={(e) => setEndTimeLocal(e.target.value)}
+                          />
+                          <p className="text-xs text-gray-500">
+                            Pick an exact local end time (e.g., tomorrow 6:00 PM). Max 30 days from now.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="pt-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-2 dark:text-white">
-                      What happens next:
-                    </p>
+                    <p className="text-sm font-semibold text-gray-700 mb-2 dark:text-white">What happens next:</p>
                     <ul className="text-xs sm:text-sm text-gray-700 space-y-1 dark:text-gray-400">
-                      <li>• Your claim will be anchored on Base blockchain</li>
-                      <li>• Eligible voters have 45 seconds to fact-check with evidence</li>
+                      <li>• Your claim metadata will be pinned to IPFS</li>
+                      <li>• Then it will be anchored on the Base blockchain</li>
+                      <li>• Eligible voters have a limited window to fact-check with evidence</li>
                       <li>• AI will analyze the claim after voting ends</li>
                       <li>• Resolution is weighted by badges, stakes, and evidence</li>
-                      <li>• Only voters meeting your scope criteria can participate</li>
                     </ul>
+                    {pinResult?.cid && (
+                      <p className="text-xs mt-2">
+                        Latest CID: <span className="font-mono">{pinResult.cid}</span>
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
 
