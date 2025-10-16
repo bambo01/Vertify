@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 import {
   TrendingUp,
@@ -33,7 +34,8 @@ import {
   Target,
   Zap,
   AlertTriangle,
-  Plus
+  Plus,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -53,25 +55,30 @@ export default function DashboardPage() {
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
 
+  // per-category claim spinner
+  const [claiming, setClaiming] = useState({});
+
   const getBadgeProgress = (badge) => {
-    if (badge.tier === 'Expert') {
+    if ((badge.tier || '').toLowerCase() === 'expert') {
       return { nextTier: 'Max Level', progress: 100, requirement: 'You are at the highest tier!' };
     }
 
-    const nextTier = badge.tier === 'Silver' ? 'Gold' : 'Expert';
+    const nextTier = (badge.tier || '').toLowerCase() === 'silver' ? 'Gold' : 'Expert';
     const requirements = BADGE_REQUIREMENTS[nextTier];
 
     const truthScore = Number(badge.truthScore ?? 0);
     const totalVotes = Number(badge.totalVotes ?? 0);
 
-    const scoreProgress = (truthScore / requirements.truthScoreMin) * 100;
-    const votesProgress = (totalVotes / requirements.minimumVotes) * 100;
+    const scoreProgress = requirements ? (truthScore / requirements.truthScoreMin) * 100 : 0;
+    const votesProgress = requirements ? (totalVotes / requirements.minimumVotes) * 100 : 0;
     const progress = Math.min((scoreProgress + votesProgress) / 2, 100);
 
     return {
       nextTier,
       progress,
-      requirement: `Need ${requirements.truthScoreMin * 100}% truth score & ${requirements.minimumVotes} votes`,
+      requirement: requirements
+        ? `Need ${requirements.truthScoreMin * 100}% truth score & ${requirements.minimumVotes} votes`
+        : 'Progress data unavailable',
     };
   };
 
@@ -157,6 +164,50 @@ export default function DashboardPage() {
 
   const accuracy = userVotes.length > 0 ? (correctVotes / userVotes.length) * 100 : 0;
 
+  // ---------- categories to claim ----------
+  const badgesByCategory = useMemo(() => {
+    const map = new Map();
+    for (const b of profile?.badges || []) {
+      if (b?.category) map.set(String(b.category).toLowerCase(), b);
+    }
+    return map;
+  }, [profile]);
+
+  const normalizedCategories = useMemo(() => {
+    const cats = Array.isArray(profile?.categories) ? profile.categories : [];
+    return cats.map((c) =>
+      typeof c === 'string' ? { category: c, tier: 'silver', status: 'pending' } : c
+    );
+  }, [profile]);
+
+  const claimableCategories = useMemo(() => {
+    // Claim list = categories with no minted badge yet
+    return normalizedCategories.filter((c) => {
+      const key = String(c.category).toLowerCase();
+      return !badgesByCategory.has(key);
+    });
+  }, [normalizedCategories, badgesByCategory]);
+
+  const canClaimNow = (catObj) => {
+    // Only allow when the profile is approved
+    return (profile?.status || '').toLowerCase() === 'approved';
+  };
+
+  const claimBadge = async (catName) => {
+    if (!address) return;
+    try {
+      setClaiming((s) => ({ ...s, [catName]: true }));
+      await storage.requestCategoryClaim(address, catName);
+      await refreshProfile();
+      toast.success(`Claim requested for ${catName}. Minting will complete shortly.`);
+    } catch (err) {
+      console.error('claim error', err);
+      toast.error('Failed to claim badge. Please try again.');
+    } finally {
+      setClaiming((s) => ({ ...s, [catName]: false }));
+    }
+  };
+
   if (!isClient) {
     return (
       <div className="container mx-auto px-4 py-12">
@@ -232,6 +283,7 @@ export default function DashboardPage() {
           </Link>
         </div>
 
+        {/* KPIs */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardContent className="pt-6">
@@ -278,6 +330,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {/* Current badges */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 dark:text-white">
@@ -300,9 +353,9 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-3">
                           <Badge
                             className={
-                              badge.tier === 'Expert'
+                              (badge.tier || '').toLowerCase() === 'expert'
                                 ? 'bg-purple-100 text-purple-800'
-                                : badge.tier === 'Gold'
+                                : (badge.tier || '').toLowerCase() === 'gold'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-gray-100 text-gray-800'
                             }
@@ -331,6 +384,11 @@ export default function DashboardPage() {
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {badgeProgress.requirement}
                         </p>
+                        {badge.status && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Status: {badge.status}{badge.tokenId ? ` • Token #${badge.tokenId}` : ''}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -340,6 +398,70 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
+        {/* Claimable categories (no badge yet) */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 dark:text-white">
+              <ShieldCheck className="h-6 w-6 text-emerald-500" />
+              Claim Your Category Badges
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {claimableCategories.length === 0 ? (
+              <p className="text-gray-500 dark:text-white">
+                All set! You’ve claimed badges for every category you’re in.
+              </p>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {claimableCategories.map((c) => {
+                  const statusLc = String(c.status || 'pending').toLowerCase();
+                  const awaitingMint =
+                    statusLc === 'claim_requested' || statusLc === 'minting' || statusLc === 'minted';
+
+                  const disabled =
+                    !canClaimNow(c) || awaitingMint || !!claiming[c.category];
+
+                  const buttonText =
+                    claiming[c.category]
+                      ? 'Claiming…'
+                      : awaitingMint
+                      ? (statusLc === 'claim_requested' ? 'Awaiting Mint…'
+                        : statusLc === 'minted' ? 'Minted — syncing…'
+                        : 'Minting…')
+                      : 'Claim Badge';
+
+                  return (
+                    <div key={c.category} className="p-4 rounded-lg border dark:border-gray-700">
+                      <div className="mb-2 flex items-center justify-between">
+                        <Badge variant="outline">{c.category}</Badge>
+                        <Badge variant="secondary">
+                          {(c.status || 'pending').replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3 dark:text-gray-400">
+                        Claim your Silver badge NFT for this category.
+                      </p>
+                      <Button
+                        className="w-full bg-[#227DC3] hover:bg-blue-700"
+                        disabled={disabled}
+                        onClick={() => claimBadge(c.category)}
+                      >
+                        {buttonText}
+                      </Button>
+                      {!canClaimNow(c) && (
+                        <p className="mt-2 text-xs text-amber-600">
+                          Badge claim will be available once your account is approved.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Claims / Votes tabs */}
         <Tabs defaultValue="claims" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="claims">

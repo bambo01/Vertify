@@ -293,33 +293,47 @@ export const storage = {
     }
   },
 
-  async getUserProfile(address) {
-    if (USE_LOCALSTORAGE) {
-      const users = await this.getUsers();
-      return users.find(
-        (u) =>
-          u.address?.toLowerCase() === address.toLowerCase() ||
-          u.walletAddress?.toLowerCase() === address.toLowerCase()
-      );
+async getUserProfile(address) {
+  if (USE_LOCALSTORAGE) {
+    const users = await this.getUsers();
+    return users.find(
+      (u) =>
+        u.address?.toLowerCase() === address.toLowerCase() ||
+        u.walletAddress?.toLowerCase() === address.toLowerCase()
+    );
+  }
+  try {
+    const backendUser = await apiClient.getUser(String(address).toLowerCase());
+    if (backendUser?.walletAddress) {
+      // Prefer real categories from backend; fallback to badges→categories only if needed
+      const categories = Array.isArray(backendUser.categories)
+        ? backendUser.categories
+        : Array.isArray(backendUser.badges)
+          ? backendUser.badges
+              .filter((b) => b?.category)
+              .map((b) => ({
+                category: b.category,
+                tier: b.tier || "silver",
+                status: b.status || "pending",
+              }))
+          : [];
+
+      return {
+        ...backendUser,
+        address: backendUser.walletAddress,
+        displayName:
+          backendUser.displayName || backendUser.walletAddress.slice(0, 6),
+        categories, // <-- keep DB categories
+      };
     }
-    try {
-      const backendUser = await apiClient.getUser(String(address).toLowerCase());
-      if (backendUser?.walletAddress) {
-        return {
-          ...backendUser,
-          address: backendUser.walletAddress,
-          displayName:
-            backendUser.displayName || backendUser.walletAddress.slice(0, 6),
-          categories: backendUser.badges?.map((b) => b.category) || [],
-        };
-      }
-      return backendUser;
-    } catch (err) {
-      if (err.status === 404) return null; // not registered yet
-      console.error("Error fetching user profile:", err);
-      return null;
-    }
-  },
+    return backendUser;
+  } catch (err) {
+    if (err?.status === 404) return null; // not registered yet
+    console.error("Error fetching user profile:", err);
+    return null;
+  }
+},
+
 
 // -------------------- Save / Update Profile --------------------
 // -------------------- Save / Update Profile --------------------
@@ -756,6 +770,98 @@ async updateUserStatus({ address, status }) {
     throw e;
   }
 },
+
+   /**
+   * User clicks “Claim” → just mark category as claim_requested.
+   * Backend will mint later; no badge is created here.
+   */
+  async requestCategoryClaim(address, category) {
+    if (!address || !category) throw new Error("address and category are required");
+    const wallet = String(address).toLowerCase();
+
+    const current = await this.getUserProfile(wallet);
+    const cats = Array.isArray(current?.categories) ? current.categories : [];
+
+    // Build a categories payload that flips only the target category
+    const categoriesPayload = cats.map((c) => {
+      const name = typeof c === "string" ? c : c.category;
+      const isTarget =
+        String(name).toLowerCase() === String(category).toLowerCase();
+      return {
+        category: name,
+        tier: (typeof c === "object" && c.tier) || "silver",
+        status: isTarget
+          ? "claim_requested"
+          : ((typeof c === "object" && c.status) || "pending"),
+      };
+    });
+
+    // If category wasn’t present, add it
+    if (!categoriesPayload.some(c =>
+      String(c.category).toLowerCase() === String(category).toLowerCase()
+    )) {
+      categoriesPayload.push({ category, tier: "silver", status: "claim_requested" });
+    }
+
+    await apiClient.updateUserCategories(wallet, categoriesPayload);
+    return await this.getUserProfile(wallet);
+  },
+
+  /**
+   * Call this AFTER on-chain mint succeeds to add the badge and mark category minted.
+   */
+  async finalizeCategoryBadgeMint(
+    address,
+    { category, tokenId, txHash, imageUrl, tier = "silver" } = {}
+  ) {
+    if (!address || !category) throw new Error("address and category are required");
+    const wallet = String(address).toLowerCase();
+    const current = await this.getUserProfile(wallet);
+
+    const existingBadges = Array.isArray(current?.badges) ? current.badges : [];
+    const hasBadge = existingBadges.some(
+      (b) => String(b.category).toLowerCase() === String(category).toLowerCase()
+    );
+
+    // Append minted badge if not already present
+    if (!hasBadge) {
+      const mintedBadge = {
+        category,
+        tier,
+        status: "active",
+        mintedAt: Date.now(),
+        tokenId: tokenId ?? undefined,
+        txHash: txHash ?? undefined,
+        imageUrl: imageUrl ?? undefined,
+        voteCount: 0,
+        truthScore: 0.5,
+      };
+      await apiClient.updateUserBadges(wallet, [...existingBadges, mintedBadge]);
+    }
+
+    // Flip category status to minted
+    const cats = Array.isArray(current?.categories) ? current.categories : [];
+    const categoriesPayload = cats.map((c) => {
+      const name = typeof c === "string" ? c : c.category;
+      const isTarget =
+        String(name).toLowerCase() === String(category).toLowerCase();
+      return {
+        category: name,
+        tier: (typeof c === "object" && c.tier) || "silver",
+        status: isTarget
+          ? "minted"
+          : ((typeof c === "object" && c.status) || "pending"),
+      };
+    });
+    if (categoriesPayload.length) {
+      await apiClient.updateUserCategories(wallet, categoriesPayload);
+    }
+
+    return await this.getUserProfile(wallet);
+  },
+
+
+
 
   clearAll() {
     if (typeof window === "undefined") return;
