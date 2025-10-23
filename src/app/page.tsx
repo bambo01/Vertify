@@ -400,7 +400,7 @@ export default function HomePage() {
 
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             {/* Explore Claims */}
-            <div className="relative overflow-hidden rounded-xl bg-orange-200 dark:bg-white/10 ring-1 ring-white/10">
+            <div className="relative overflow-hidden rounded-xl bg-gray-200 dark:bg-white/10 ring-1 ring-white/10">
               <div className="p-6 md:p-8">
                 <h3 className="text-2xl font-medium text-gray-700 dark:text-white/90">
                   Explore Claims
@@ -467,7 +467,7 @@ export default function HomePage() {
                   <span className="h-4 w-2 bg-white rounded-l-sm" />
                 </span>
                 <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                  Verity
+                  Vertify
                 </span>
                 <span className="text-blue-600 dark:text-blue-400 align-super text-xs">
                   ®

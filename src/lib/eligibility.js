@@ -1,6 +1,64 @@
-// v2.2: Voter eligibility checks (badge + geo only; roles are IGNORED)
+// /lib/eligibility.js (frontend, ESM)
+// Uses viem so we don't depend on ethers in the FE
 
-// Per-user check
+import { encodeAbiParameters, keccak256 } from "viem";
+
+// ——— helpers ———
+function uniqSort(arr) {
+  return Array.from(new Set(arr)).sort();
+}
+function normList(xs) {
+  return uniqSort((xs ?? [])
+    .map((s) => (s ?? "").trim().toLowerCase())
+    .filter(Boolean));
+}
+
+// ————————————————————————————————————————————————
+// Cryptographic, versioned commitment to voterScope
+// (roles ignored by policy, hashed as empty array)
+// ————————————————————————————————————————————————
+export function generateEligibilitySnapshotHash(input = {}) {
+  const raw = input?.voterScope ?? {};
+  const scope = {
+    everyone: !!raw.everyone,
+    requireCategory: !!raw.requireCategory,
+    // roles intentionally ignored; keep empty to avoid drift
+    allowedRoles: [],
+    allowedGeo: {
+      cities:    normList(raw.allowedGeo?.cities),
+      provinces: normList(raw.allowedGeo?.provinces),
+      countries: normList(raw.allowedGeo?.countries),
+    },
+  };
+
+  // viem ABI encode then keccak256
+  const encoded = encodeAbiParameters(
+    [
+      { type: "string" },   // version tag
+      { type: "bool"   },
+      { type: "bool"   },
+      { type: "string[]" }, // roles (empty)
+      { type: "string[]" }, // cities
+      { type: "string[]" }, // provinces
+      { type: "string[]" }, // countries
+    ],
+    [
+      "eligibility:v1",
+      scope.everyone,
+      scope.requireCategory,
+      scope.allowedRoles,
+      scope.allowedGeo.cities,
+      scope.allowedGeo.provinces,
+      scope.allowedGeo.countries,
+    ]
+  );
+
+  return keccak256(encoded); // 0x + 64 hex
+}
+
+// ————————————————————————————————————————————————
+// v2.3 — Badge + Geo only (roles ignored), normalized checks
+// ————————————————————————————————————————————————
 export function checkVoterEligibility(userProfile = {}, claim = {}) {
   const scope = claim?.voterScope;
 
@@ -17,41 +75,44 @@ export function checkVoterEligibility(userProfile = {}, claim = {}) {
 
   const failed = [];
 
-  // Category badge requirement (the only non-geo gate)
+  // Category badge gate
   if (scope.requireCategory) {
     const hasCategory =
       Array.isArray(userProfile?.badges) &&
       userProfile.badges.some((b) => b?.category === claim?.category);
-    if (!hasCategory) failed.push(`Missing ${claim?.category} category badge`);
+    if (!hasCategory) failed.push(`Requires ${claim?.category} badge`);
   }
 
-  // ⛔ Roles are intentionally IGNORED for eligibility
-  // If the UI supplies allowedRoles, they'll be treated as informational only.
+  // Normalize user geo
+  const uCity    = (userProfile?.city ?? "").trim().toLowerCase();
+  const uProv    = (userProfile?.province ?? "").trim().toLowerCase();
+  const uCountry = (userProfile?.country ?? "").trim().toLowerCase();
 
-  // Geo (intersection)
-  const { cities = [], provinces = [], countries = [] } = scope.allowedGeo ?? {};
-  if (countries.length > 0 && !countries.includes(userProfile?.country)) {
-    failed.push(`Must be from ${countries.join(" or ")}`);
+  const cities    = normList(scope.allowedGeo?.cities);
+  const provinces = normList(scope.allowedGeo?.provinces);
+  const countries = normList(scope.allowedGeo?.countries);
+
+  // Apply each non-empty list as a gate (intersection)
+  if (countries.length && !countries.includes(uCountry)) {
+    failed.push(`Country must be one of: ${countries.join(", ")}`);
   }
-  if (provinces.length > 0 && !provinces.includes(userProfile?.province)) {
-    failed.push(
-      `Must be from ${provinces.join(" or ")} province (you are from ${userProfile?.province ?? "N/A"})`
-    );
+  if (provinces.length && !provinces.includes(uProv)) {
+    failed.push(`Province must be one of: ${provinces.join(", ")}`);
   }
-  if (cities.length > 0 && !cities.includes(userProfile?.city)) {
-    failed.push(
-      `Must be from ${cities.join(" or ")} (you are from ${userProfile?.city ?? "N/A"})`
-    );
+  if (cities.length && !cities.includes(uCity)) {
+    failed.push(`City must be one of: ${cities.join(", ")}`);
   }
 
   return { eligible: failed.length === 0, reasons: failed };
 }
 
-// Async – must be awaited by callers
+// ————————————————————————————————————————————————
+// Counts eligible users (client-only; avoids SSR)
+// ————————————————————————————————————————————————
 export async function getEligibleVotersCount(claim) {
   if (typeof window === "undefined") return 0;
 
-  // Late import to avoid SSR issues
+  // Late import to avoid SSR issues; adjust path if needed
   const { storage } = await import("./storage");
   const raw = await storage.getUsers();
 
@@ -68,14 +129,4 @@ export async function getEligibleVotersCount(claim) {
   if (!scope || scope.everyone) return allUsers.length;
 
   return allUsers.filter((u) => checkVoterEligibility(u, claim).eligible).length;
-}
-
-export function generateEligibilitySnapshotHash(claim) {
-  const data = JSON.stringify(claim?.voterScope ?? {});
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = (hash << 5) - hash + data.charCodeAt(i);
-    hash |= 0;
-  }
-  return `0x${Math.abs(hash).toString(16).padStart(64, "0")}`;
 }

@@ -58,7 +58,6 @@
     "date-fns": "^3.6.0",
     "dotenv": "^17.2.3",
     "embla-carousel-react": "^8.6.0",
-    "ethers": "^6.15.0",
     "express": "5.1.0",
     "framer-motion": "^12.12.1",
     "hardhat": "3.0.7",
@@ -82,7 +81,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tough-cookie": "^5.1.2",
     "vaul": "^1.1.2",
-    "viem": "2.21.45",
+    "viem": "^2.21.45",
     "wagmi": "2.13.5",
     "winston": "^3.17.0",
     "zod": "^3.24.4"

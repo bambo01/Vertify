@@ -344,13 +344,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex gap-2">
-            {canSync && (
+            {/*canSync && (
               <Button variant="outline" onClick={resyncFromChain}>
                 Resync badges
               </Button>
-            )}
+            )*/}
             <Link href="/submit">
-              <Button className="gap-2 bg-[#44ADFF]">
+              <Button className="gap-2 bg-[#44ADFF] hover:bg-[#44ADFF]/90">
                 <Plus className="h-4 w-4" />
                 Submit Claim
               </Button>
