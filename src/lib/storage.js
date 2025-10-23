@@ -215,33 +215,73 @@ export const storage = {
     return []; // no backend "get all votes" endpoint
   },
 
-  async saveVote(vote) {
-    if (typeof window === "undefined") return vote;
-    if (USE_LOCALSTORAGE) {
-      const votes = await this.getVotes();
-      votes.push(vote);
-      localStorage.setItem(VOTES_KEY, JSON.stringify(votes));
-      return vote;
-    }
-    try {
-      const backendVote = {
-        claimId: vote.claimId,
-        voter: vote.voterAddress,
-        position: vote.vote, // 'truth' or 'fake'
-        stake: vote.stake,
-        evidence: vote.evidence,
-        evidenceQualityScore: vote.evidenceQualityScore,
-        badgeTier: vote.badgeTier,
-        tierMultiplier: vote.tierMultiplier || 1.0,
-        weight: vote.weight,
-      };
-      const savedVote = await apiClient.createVote(backendVote);
-      return { ...savedVote, voterAddress: savedVote.voter, vote: savedVote.position };
-    } catch (error) {
-      console.error("Error saving vote:", error);
-      throw error;
-    }
-  },
+ // storage.saveVote
+async saveVote(vote) {
+  if (typeof window === "undefined") return vote;
+
+  // Normalize E (0..1) if someone passed a 0..100 number
+  const normalizedEvidence =
+    vote.evidenceQualityScore > 1
+      ? vote.evidenceQualityScore / 100
+      : vote.evidenceQualityScore;
+
+  const clientVote = {
+    ...vote,
+    evidenceQualityScore: normalizedEvidence,
+  };
+
+  if (USE_LOCALSTORAGE) {
+    const votes = await this.getVotes();
+    votes.push(clientVote);
+    localStorage.setItem(VOTES_KEY, JSON.stringify(votes));
+    return clientVote;
+  }
+
+  try {
+    // Map to API payload shape
+    const apiPayload = {
+      // server-side canonical fields
+      claimId: clientVote.claimId,
+      voter: clientVote.voterAddress,     // <- address to 'voter'
+      position: clientVote.vote,          // <- 'truth' | 'fake' to 'position'
+      stake: clientVote.stake,
+      badgeTier: clientVote.badgeTier,
+      categoryBadge: clientVote.categoryBadge,
+      truthScoreAtVote: clientVote.truthScoreAtVote ?? 0,
+      evidence: clientVote.evidence || [],
+      evidenceQualityScore: clientVote.evidenceQualityScore, // already normalized
+      weightTruthScore: clientVote.weightTruthScore,
+      weight: clientVote.weight,
+      metadata: {
+        voterName: clientVote.voter,         // keep displayName for UI
+        voterCity: clientVote.voterCity,
+        voterProvince: clientVote.voterProvince,
+        voterCountry: clientVote.voterCountry,
+        roleBadges: clientVote.roleBadges || [],
+        txHash: clientVote.txHash,
+        clientGeneratedId: clientVote.id,    // preserve for debugging
+        clientTimestamp: clientVote.timestamp,
+      },
+    };
+    console.log('Save data: ', apiPayload);
+
+    const savedVote = await apiClient.createVote(apiPayload);
+
+    // Normalize the API response back to your client shape
+    // (your API returns voter=address and position=truth/fake)
+    return {
+      ...clientVote,
+      ...savedVote,
+      id: savedVote.id ?? clientVote.id,
+      voterAddress: savedVote.voter ?? clientVote.voterAddress,
+      vote: savedVote.position ?? clientVote.vote,
+    };
+  } catch (error) {
+    console.error("Error saving vote:", error);
+    throw error;
+  }
+},
+
 
   async getVotesForClaim(claimId) {
     if (USE_LOCALSTORAGE) {

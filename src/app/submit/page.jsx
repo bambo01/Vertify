@@ -1,8 +1,11 @@
+// app/submit/page.jsx
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { useRouter } from 'next/navigation';
+import { parseAbi } from 'viem';
+
 import { WalletRequired } from '@/components/wallet-connect';
 import { VoterScopeSelector } from '@/components/voter-scope-selector';
 import { Button } from '@/components/ui/button';
@@ -11,15 +14,31 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { storage } from '@/lib/storage';
 import { generateEligibilitySnapshotHash } from '@/lib/eligibility';
 import { toast } from 'sonner';
 import { FileText, Loader2 } from 'lucide-react';
 
+// API base (set NEXT_PUBLIC_API_ORIGIN to your Railway /api origin; falls back to Next /api)
+const API_URL = (process.env.NEXT_PUBLIC_API_ORIGIN || '/api').replace(/\/$/, '');
+
+// Contract
+const CONTRACT = process.env.NEXT_PUBLIC_TRUTHCHAIN_CORE_ADDRESS;
+const ABI = parseAbi([
+  'function submitClaim(string _claimId, string _metadataHash, uint256 _votingDuration, bytes32 _eligibilityHash) external',
+  'event ClaimSubmitted(string indexed claimId, address indexed poster, string metadataHash, bytes32 eligibilityHash, uint256 votingEndsAt)',
+]);
+
 export default function SubmitPage() {
   const { address } = useAccount();
   const router = useRouter();
 
+  // wagmi hooks
+  const publicClient = usePublicClient();
+  const { data: wallet } = useWalletClient();
+
+  // Form state
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [summary, setSummary] = useState('');
@@ -30,47 +49,61 @@ export default function SubmitPage() {
     allowedRoles: [],
     allowedGeo: { cities: [], provinces: [], countries: [] },
   });
+
+  // UX state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [profile, setProfile] = useState(null);
   const [isClient, setIsClient] = useState(false);
   const [pinResult, setPinResult] = useState(null);
 
-  // Voting schedule state
-  const [votingMode, setVotingMode] = useState('preset'); // 'preset' | 'custom' | 'endtime'
-  const [presetDuration, setPresetDuration] = useState('86400'); // default 24h in seconds
-  const [customNumber, setCustomNumber] = useState('24');        // e.g., "24"
-  const [customUnit, setCustomUnit] = useState('hours');         // 'minutes' | 'hours' | 'days'
-  const [endTimeLocal, setEndTimeLocal] = useState('');          // yyyy-MM-ddTHH:mm (local)
+  // User/profile
+  const [profile, setProfile] = useState(null);
 
+  // Voting schedule
+  const [votingMode, setVotingMode] = useState('preset'); // 'preset' | 'custom' | 'endtime'
+  const [presetDuration, setPresetDuration] = useState('86400'); // 24h
+  const [customNumber, setCustomNumber] = useState('24');
+  const [customUnit, setCustomUnit] = useState('hours'); // minutes | hours | days
+  const [endTimeLocal, setEndTimeLocal] = useState(''); // yyyy-MM-ddTHH:mm
+
+  // Mount + load profile
   useEffect(() => {
     setIsClient(true);
     const loadProfile = async () => {
-      if (address) {
-        const userProfile = await storage.getUserProfile(address);
-        if (!userProfile) {
-          toast.error('Please complete registration first');
-          router.push('/register');
-        } else {
-          setProfile(userProfile);
-        }
+      if (!address) return;
+      const userProfile = await storage.getUserProfile(address);
+      if (!userProfile) {
+        toast.error('Please complete registration first');
+        router.push('/register');
+        return;
       }
+      setProfile(userProfile);
     };
     loadProfile();
   }, [address, router]);
 
-  // Normalize categories to strings and only allow minted ones
+  // 🔎 Categories from **minted badges** (fallback to legacy profile.categories)
   const userCategories = useMemo(() => {
-    const arr = profile?.categories || [];
-    const onlyMinted = arr
-      .filter((c) => (typeof c === 'object' ? c.status === 'minted' : true))
-      .map((c) => (typeof c === 'string' ? c : c.category))
-      .map((s) => s?.trim())
+    const fromBadges =
+      (Array.isArray(profile?.badges) ? profile.badges : [])
+        .filter((b) => (b?.status ?? 'minted') === 'minted')
+        .map((b) => b?.category)
+        .filter(Boolean) || [];
+
+    const legacy =
+      (Array.isArray(profile?.categories) ? profile.categories : [])
+        .filter((c) => (typeof c === 'object' ? c.status === 'minted' : true))
+        .map((c) => (typeof c === 'string' ? c : c.category))
+        .filter(Boolean) || [];
+
+    const all = [...fromBadges, ...legacy]
+      .map((s) => String(s).trim())
       .filter(Boolean);
+
     const seen = new Set();
-    return onlyMinted.filter((c) => (seen.has(c.toLowerCase()) ? false : (seen.add(c.toLowerCase()), true)));
+    return all.filter((c) => (seen.has(c.toLowerCase()) ? false : (seen.add(c.toLowerCase()), true)));
   }, [profile]);
 
-  // Auto-select first category
+  // Auto-pick first category (when available)
   useEffect(() => {
     if (!category && userCategories.length) setCategory(userCategories[0]);
   }, [userCategories, category]);
@@ -91,13 +124,17 @@ export default function SubmitPage() {
       toast.error('Please enter a valid URL');
       return;
     }
-    const canSubmit = userCategories.some((c) => c.toLowerCase() === String(category).toLowerCase());
+
+    // ✅ Ensure user holds a minted badge for the chosen category
+    const canSubmit = userCategories.some(
+      (c) => c.toLowerCase() === String(category).toLowerCase(),
+    );
     if (!canSubmit) {
-      toast.error(`You need a badge in ${category} to submit claims in this category`);
+      toast.error(`You need a minted badge in ${category} to submit in this category`);
       return;
     }
 
-    // Derive final votingDurationSec from schedule controls
+    // Voting duration
     let finalDurationSec = 0;
     if (votingMode === 'preset') {
       finalDurationSec = parseInt(presetDuration, 10);
@@ -115,11 +152,10 @@ export default function SubmitPage() {
         return;
       }
       const endMs = new Date(endTimeLocal).getTime();
-      const diffSec = Math.floor((endMs - Date.now()) / 1000);
-      finalDurationSec = diffSec;
+      finalDurationSec = Math.floor((endMs - Date.now()) / 1000);
     }
-    const MIN = 60; // 1 minute
-    const MAX = 60 * 60 * 24 * 30; // 30 days
+    const MIN = 60;
+    const MAX = 60 * 60 * 24 * 30;
     if (!Number.isFinite(finalDurationSec) || finalDurationSec < MIN || finalDurationSec > MAX) {
       toast.error('Voting duration must be between 1 minute and 30 days');
       return;
@@ -127,7 +163,7 @@ export default function SubmitPage() {
 
     setIsSubmitting(true);
     try {
-      // Canonical metadata (server will pin to Pinata)
+      // 1) Build metadata (hash is preview; backend recomputes)
       const claimMeta = {
         title: title.trim(),
         url: url.trim(),
@@ -136,32 +172,20 @@ export default function SubmitPage() {
         poster: String(address).toLowerCase(),
         createdAt: new Date().toISOString(),
         voterScope,
-        eligibilityHash: generateEligibilitySnapshotHash({ voterScope }), // server may override
+        eligibilityHash: generateEligibilitySnapshotHash({ voterScope }),
         votingDurationSec: finalDurationSec,
       };
-      console.log('my Meta: ', claimMeta);
 
-      // Ask Railway backend to pin + allocate IDs
-      const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/claims/init`, {
+      // 2) Backend pin/init
+      const resp = await fetch(`${API_URL}/claims/init`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: claimMeta.title,
-          url: claimMeta.url,
-          summary: claimMeta.summary,
-          category: claimMeta.category,
-          voterScope: claimMeta.voterScope,
-          poster: claimMeta.poster,
-          eligibilityHash: claimMeta.eligibilityHash, // optional
-          votingDurationSec: finalDurationSec,
-        }),
+        body: JSON.stringify(claimMeta),
       });
-
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err?.error || 'Pin/init failed');
       }
-
       const json = await resp.json();
       const cid = json.cid || json.IpfsHash;
       const claimId = json.claimId;
@@ -170,14 +194,34 @@ export default function SubmitPage() {
 
       setPinResult({ cid, claimId, eligibilityHash, votingDurationSec });
       const shortCid = cid && cid.length > 12 ? `${cid.slice(0, 8)}…${cid.slice(-6)}` : cid;
-      toast.success(`Pinned to IPFS ✅ CID: ${shortCid}`);
+      toast.success(`Pinned to IPFS CID: ${shortCid}`);
 
-      // Step 2 (next): call the contract with { claimId, cid, votingDurationSec, eligibilityHash }
-      // Step 3: call /claims/finalize with { claimId, txHash, ... } to persist DB
+      // 3) On-chain anchor
+      if (!wallet) throw new Error('Wallet not connected');
+      if (!CONTRACT) throw new Error('Missing NEXT_PUBLIC_TRUTHCHAIN_CORE_ADDRESS');
 
-    } catch (error) {
-      console.error(error);
-      toast.error(error?.message || 'Failed to pin claim');
+      const txHash = await wallet.writeContract({
+        address: CONTRACT,
+        abi: ABI,
+        functionName: 'submitClaim',
+        args: [claimId, cid, BigInt(votingDurationSec), eligibilityHash],
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      toast.success(`Anchored on-chain: ${txHash.slice(0, 10)}…`);
+
+      // 4) Finalize off-chain
+      await fetch(`${API_URL}/claims/finalize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ claimId, txHash }),
+      });
+
+      // Optional: navigate
+      // router.push(`/claim/${claimId}`);
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.message || 'Submission failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -194,6 +238,8 @@ export default function SubmitPage() {
     );
   }
 
+  const hasCategories = userCategories.length > 0;
+
   return (
     <WalletRequired>
       <div className="container mx-auto px-4 py-8 sm:py-12">
@@ -206,6 +252,15 @@ export default function SubmitPage() {
             </p>
           </div>
 
+          {!hasCategories && (
+            <Alert className="mb-6 bg-yellow-50 border-yellow-200">
+              <AlertDescription className="text-sm">
+                You don’t have any <strong>minted badges</strong> yet, so the Category list is empty.
+                Please mint a category badge first on the registration/badges page.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-xl sm:text-2xl dark:text-white">Claim Details</CardTitle>
@@ -215,9 +270,13 @@ export default function SubmitPage() {
                 {/* Category */}
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
-                  <Select value={category} onValueChange={setCategory}>
+                  <Select
+                    value={category}
+                    onValueChange={setCategory}
+                    disabled={!hasCategories}
+                  >
                     <SelectTrigger id="category">
-                      <SelectValue placeholder="Select category" />
+                      <SelectValue placeholder={hasCategories ? 'Select category' : 'No minted badges'} />
                     </SelectTrigger>
                     <SelectContent>
                       {userCategories.map((cat) => (
@@ -228,7 +287,7 @@ export default function SubmitPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500">
-                    You can only submit claims in categories where you have minted badges
+                    You can only submit claims in categories where you have <strong>minted</strong> badges.
                   </p>
                 </div>
 
@@ -242,6 +301,7 @@ export default function SubmitPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     maxLength={200}
+                    disabled={!hasCategories}
                   />
                 </div>
 
@@ -254,6 +314,7 @@ export default function SubmitPage() {
                     placeholder="https://example.com/article"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
+                    disabled={!hasCategories}
                   />
                   <p className="text-xs text-gray-500">Link to the article or source making the claim</p>
                 </div>
@@ -268,12 +329,13 @@ export default function SubmitPage() {
                     onChange={(e) => setSummary(e.target.value)}
                     rows={4}
                     maxLength={500}
+                    disabled={!hasCategories}
                   />
                   <p className="text-xs text-gray-500">{summary.length}/500 characters</p>
                 </div>
 
-                {/* Voter Scope & Voting Schedule */}
-                {category && (
+                {/* Voter Scope + Schedule */}
+                {category && hasCategories && (
                   <>
                     <VoterScopeSelector
                       claimCategory={category}
@@ -281,11 +343,10 @@ export default function SubmitPage() {
                       onChange={setVoterScope}
                     />
 
-                    {/* Voting Schedule */}
                     <div className="space-y-3 mt-6">
                       <Label>Voting Schedule</Label>
 
-                      {/* Mode selector */}
+                      {/* Mode */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <Button
                           type="button"
@@ -334,7 +395,7 @@ export default function SubmitPage() {
                         </div>
                       )}
 
-                      {/* Custom duration */}
+                      {/* Custom */}
                       {votingMode === 'custom' && (
                         <div className="grid grid-cols-3 gap-2 items-end">
                           <div className="col-span-2 space-y-2">
@@ -369,7 +430,7 @@ export default function SubmitPage() {
                         </div>
                       )}
 
-                      {/* End date & time */}
+                      {/* End time */}
                       {votingMode === 'endtime' && (
                         <div className="space-y-2">
                           <Label htmlFor="endTimeLocal">Ends at</Label>
@@ -390,7 +451,9 @@ export default function SubmitPage() {
 
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="pt-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-2 dark:text-white">What happens next:</p>
+                    <p className="text-sm font-semibold text-gray-700 mb-2 dark:text-white">
+                      What happens next:
+                    </p>
                     <ul className="text-xs sm:text-sm text-gray-700 space-y-1 dark:text-gray-400">
                       <li>• Your claim metadata will be pinned to IPFS</li>
                       <li>• Then it will be anchored on the Base blockchain</li>
@@ -409,7 +472,14 @@ export default function SubmitPage() {
                 <Button
                   type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-700"
-                  disabled={isSubmitting || !title || !url || !summary || !category}
+                  disabled={
+                    isSubmitting ||
+                    !hasCategories ||
+                    !title.trim() ||
+                    !url.trim() ||
+                    !summary.trim() ||
+                    !category
+                  }
                 >
                   {isSubmitting ? (
                     <>

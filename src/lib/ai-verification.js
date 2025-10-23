@@ -1,5 +1,5 @@
 import { geminiFactCheck } from "../gemini-api.ts";
-import Claim from "../models/Claim.js"; // <-- Make sure path is correct
+//import Claim from "../models/Claim.js"; // <-- Make sure path is correct
 
 /**
  * Weighted AI verification that auto-saves results in the Claim document.
