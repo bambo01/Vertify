@@ -1,54 +1,110 @@
-import { geminiFactCheck } from '../gemini-api.ts';
+import { geminiFactCheck } from "../gemini-api.ts";
+import Claim from "../models/Claim.js"; // <-- Make sure path is correct
 
+/**
+ * Weighted AI verification that auto-saves results in the Claim document.
+ */
 export async function verifyClaimWithAI(claim) {
   try {
-    const query = `Fact-check this claim:
+    const query = `
+Fact-check this claim:
 Title: ${claim.title}
 URL: ${claim.url}
 Summary: ${claim.summary}
 
-Please analyze this claim and provide:
-1. A verdict (True/False/Uncertain)
-2. Confidence level (0-100%)
-3. Detailed reasoning
-4. Sources used for verification (list URLs or publication names at the end)`;
+Please analyze and provide:
+1. A factuality score for content accuracy (0-100)
+2. Confidence level (0-100)
+3. Short reasoning
+4. Source credibility notes (list URLs or publishers)
+`;
 
+    // --- Step 1: AI Verification (A) ---
     const response = await geminiFactCheck(query, {
       temperature: 0.1,
       max_tokens: 2000,
     });
 
-    const answer = response.answer.toLowerCase();
+    const aiAnswer = response.answer?.toLowerCase() || "";
+    const sources = response.citations || [];
 
-    let result = 'Uncertain';
-    let confidence = 50;
+    let aiScore = 60;
+    if (aiAnswer.includes("true") || aiAnswer.includes("accurate")) aiScore = 90;
+    else if (aiAnswer.includes("false") || aiAnswer.includes("inaccurate")) aiScore = 20;
+    else if (aiAnswer.includes("uncertain")) aiScore = 50;
 
-    if (answer.includes('true') || answer.includes('accurate') || answer.includes('verified')) {
-      result = 'Truth';
-      confidence = 75;
-    } else if (answer.includes('false') || answer.includes('inaccurate') || answer.includes('misleading')) {
-      result = 'Fake';
-      confidence = 75;
-    }
+    // --- Step 2: Evidence Credibility (E) ---
+    const hasEvidence = Array.isArray(claim.evidence) && claim.evidence.length > 0;
+    const avgEvidenceQuality = hasEvidence
+      ? claim.evidence.reduce((sum, e) => sum + (e.qualityScore || 0.5), 0) / claim.evidence.length
+      : 0.3;
+    const evidenceScore = avgEvidenceQuality * 100;
 
-    if (answer.includes('highly confident') || answer.includes('strong evidence')) {
-      confidence = Math.min(95, confidence + 15);
-    } else if (answer.includes('uncertain') || answer.includes('unclear') || answer.includes('mixed')) {
-      confidence = Math.max(40, confidence - 20);
-    }
+    // --- Step 3: User Credibility Badge (V) ---
+    const badgeWeights = { silver: 0.6, gold: 0.8, expert: 1.0 };
+    const badgeWeight = badgeWeights[claim.badgeTier?.toLowerCase()] || 0.5;
+    const userCredibilityScore = badgeWeight * 100;
 
+    // --- Step 4: Source Reliability (S) ---
+    const trustedDomains = ["bbc.com", "reuters.com", "apnews.com", "nature.com", "who.int"];
+    const isTrustedSource = trustedDomains.some((domain) =>
+      (claim.url || "").includes(domain)
+    );
+    const sourceScore = isTrustedSource ? 90 : 50;
+
+    // --- Step 5: Weighted Final Score ---
+    const finalScore =
+      aiScore * 0.35 +
+      evidenceScore * 0.25 +
+      userCredibilityScore * 0.2 +
+      sourceScore * 0.2;
+
+    // --- Step 6: Verdict ---
+    let verdict = "Uncertain";
+    if (finalScore >= 70) verdict = "Truth";
+    else if (finalScore <= 40) verdict = "Fake";
+
+    // --- Step 7: Save to Database ---
+    await Claim.findByIdAndUpdate(
+      claim._id,
+      {
+        aiVerification: {
+          result: verdict,
+          finalScore: Math.round(finalScore),
+          reasoning: response.answer || "No detailed reasoning available.",
+          breakdown: {
+            aiScore,
+            evidenceScore,
+            userCredibilityScore,
+            sourceScore,
+          },
+          sources,
+          verifiedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    // --- Step 8: Return Result ---
     return {
-      result,
-      confidence,
-      reasoning: response.answer,
-      sources: response.citations || [],
+      result: verdict,
+      finalScore: Math.round(finalScore),
+      reasoning: response.answer || "No detailed reasoning available.",
+      breakdown: {
+        aiScore,
+        evidenceScore,
+        userCredibilityScore,
+        sourceScore,
+      },
+      sources,
     };
   } catch (error) {
-    console.error('AI verification failed:', error);
+    console.error("AI verification failed:", error);
     return {
-      result: 'Uncertain',
-      confidence: 0,
-      reasoning: 'AI verification failed. Please try again later.',
+      result: "Uncertain",
+      finalScore: 0,
+      reasoning: "AI verification failed. Please try again later.",
+      breakdown: {},
       sources: [],
     };
   }
