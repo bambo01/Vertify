@@ -1,135 +1,215 @@
 // src/lib/ai-verification.js
-import { geminiFactCheck } from "../gemini-api.ts";
+// FE-safe helper that can run with or without an injected server-side LLM call.
 
-// ——— utils ———
 const clamp100 = (n) => Math.max(0, Math.min(100, Number(n) || 0));
+const pct = (x) => clamp100(x);
+
+// Average 0..100 from evidence qualityScore (accepts 0..1 or 0..100)
 const evidenceAvg0to100 = (evidence) => {
   if (!Array.isArray(evidence) || evidence.length === 0) return 30;
   const vals = evidence.map((e) => {
     const q = e?.qualityScore;
     if (typeof q !== "number") return 50;
-    return q <= 1 ? q * 100 : q; // accept 0..1 or 0..100
+    return q <= 1 ? q * 100 : q;
   });
   return clamp100(vals.reduce((a, b) => a + b, 0) / vals.length);
 };
 
-const pickId = (claim) => claim?._id ?? claim?.id ?? "";
+// Aggregate voter credibility (by tier, optionally stake-weighted)
+const tierToWeight = (tier) => {
+  const t = String(tier || "").toLowerCase();
+  if (t === "expert") return 1.0;
+  if (t === "gold") return 0.8;
+  if (t === "silver") return 0.6;
+  if (t === "bronze") return 0.5;
+  return 0.5; // default/none
+};
 
-// Build base API origin (prefer server-only env if you keep this server-side)
-const API_ORIGIN =
-  (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_ORIGIN || "").replace(/\/$/, "");
-
-// Simple fetch with timeout
-async function fetchWithTimeout(url, opts = {}, ms = 10000) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { ...opts, signal: ctrl.signal });
-    return res;
-  } finally {
-    clearTimeout(id);
+const userCredScoreFromVoters = (voterCred = []) => {
+  if (!Array.isArray(voterCred) || voterCred.length === 0) return 50;
+  let num = 0;
+  let den = 0;
+  for (const v of voterCred) {
+    const stake = Number(v?.stake) || 0;
+    const w = tierToWeight(v?.badgeTier);
+    num += (stake > 0 ? stake : 1) * (w * 100);
+    den += (stake > 0 ? stake : 1);
   }
-}
+  return den > 0 ? clamp100(num / den) : 50;
+};
+
+// Source reliability: reward known-good domains across ALL evidence (and the claim URL)
+const trustedDomains = ["bbc.com", "reuters.com", "apnews.com", "nature.com", "who.int", "nytimes.com"];
+const domainFromUrl = (u) => {
+  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; }
+};
+const sourceReliabilityScore = ({ claimUrl, allEvidence = [] }) => {
+  const urls = [
+    ...(claimUrl ? [claimUrl] : []),
+    ...allEvidence.map((e) => e?.url).filter(Boolean),
+  ];
+  if (urls.length === 0) return 50;
+
+  let hits = 0;
+  for (const u of urls) {
+    const d = domainFromUrl(u);
+    if (!d) continue;
+    if (trustedDomains.some((td) => d.endsWith(td))) hits += 1;
+  }
+  const ratio = hits / urls.length;
+  return clamp100(40 + ratio * 55); // scale 40..95 based on trusted ratio
+};
 
 /**
- * Weighted AI verification that auto-saves results via backend API.
- * NOTE: Call this server-side.
+ * verifyClaimWithAI
+ * @param payload {
+ *   id, title, url, summary, category,
+ *   evidenceTop?, allEvidence?, allEvidenceUrls?,
+ *   voteStats?,
+ *   voterCred?,     // [{ voterAddress, stake, badgeTier, ...}]
+ *   weightPlan?,    // { aiWeight, evidenceWeight, userCredWeight, sourceWeight } in 0..1
+ *   llmCall?,       // optional async (prompt) => { answer?: string }
+ * }
  */
-export async function verifyClaimWithAI(claim) {
+export async function verifyClaimWithAI(payload = {}) {
   try {
-    // 1) Prepare AI query
-    const query = `
+    const {
+      title, url, summary,
+      evidenceTop = [],
+      allEvidence = [],
+      voteStats = {},
+      voterCred = [],
+      weightPlan,
+      llmCall, // optional injected function to call server-side LLM
+      allEvidenceUrls, // optional prebuilt array of urls
+    } = payload;
+
+    // ---- 1) Build the prompt (used only if llmCall is provided) ----
+    const prompt = `
 Fact-check this claim:
-Title: ${claim?.title ?? ""}
-URL: ${claim?.url ?? ""}
-Summary: ${claim?.summary ?? ""}
 
-Please analyze and provide:
-1. A factuality score for content accuracy (0-100)
-2. Confidence level (0-100)
-3. Short reasoning
-4. Source credibility notes (list URLs or publishers)
-`;
+Title: ${title ?? ""}
+URL: ${url ?? ""}
+Summary: ${summary ?? ""}
 
-    // 2) Call Gemini
-    const response = await geminiFactCheck(query, {
-      temperature: 0.1,
-      max_tokens: 2000,
-    });
+Vote stats (client-provided):
+- Truth Votes: ${voteStats?.truthVotes ?? 0}
+- Fake Votes:  ${voteStats?.fakeVotes ?? 0}
+- Truth Stake: ${voteStats?.truthStake ?? 0}
+- Fake Stake:  ${voteStats?.fakeStake ?? 0}
 
-    const rawAnswer = response?.answer || "";
-    const aiAnswer = rawAnswer.toLowerCase();
-    const sources = Array.isArray(response?.citations) ? response.citations : [];
+Evidence (top from claim):
+${evidenceTop.map((e, i) => `  ${i + 1}. ${e.domain || e.url}  (q=${e.qualityScore ?? "?"})`).join("\n")}
 
-    // 3) AI score (keyword fallback)
-    let aiScore = 60;
-    if (aiAnswer.includes("true") || aiAnswer.includes("accurate")) aiScore = 90;
-    else if (aiAnswer.includes("false") || aiAnswer.includes("inaccurate")) aiScore = 20;
-    else if (aiAnswer.includes("uncertain")) aiScore = 50;
+Evidence (ALL URLs de-duplicated):
+${allEvidence.map((e, i) => `  ${i + 1}. ${e.domain || e.url}`).join("\n")}
 
-    // 4) Evidence score (normalize)
-    const evidenceScore = evidenceAvg0to100(claim?.evidence);
+Voter credibility summary:
+${voterCred.map((v) =>
+  `  - ${v.voterAddress?.slice(0, 8)}… | tier=${v.badgeTier || "none"} | stake=${v.stake ?? 0} | pos=${v.position}`
+).join("\n")}
 
-    // 5) User credibility score (uses claim.badgeTier if provided)
-    const badgeWeights = { silver: 0.6, gold: 0.8, expert: 1.0 };
-    const badgeWeight = badgeWeights[String(claim?.badgeTier || "").toLowerCase()] || 0.5;
-    const userCredibilityScore = clamp100(badgeWeight * 100);
+Return a short, direct judgment (Truth / Fake) and a brief reasoning.
+    `.trim();
 
-    // 6) Source reliability
-    const trustedDomains = ["bbc.com", "reuters.com", "apnews.com", "nature.com", "who.int"];
-    const sourceScore = trustedDomains.some((d) => (claim?.url || "").includes(d)) ? 90 : 50;
+    // ---- 2) Try LLM call if provided; else use heuristic fallback ----
+    let llmReasoning = "";
+    let llmVerdictHint = ""; // "truth" | "fake" | (ignore 'uncertain' for binary decision)
 
-    // 7) Weighted final + verdict
-    const finalScore =
-      aiScore * 0.35 +
-      evidenceScore * 0.25 +
-      userCredibilityScore * 0.20 +
-      sourceScore * 0.20;
-
-    const rounded = Math.round(clamp100(finalScore));
-    const verdict = rounded >= 70 ? "Truth" : rounded <= 40 ? "Fake" : "Uncertain";
-
-    // 8) Build payload
-    const aiVerification = {
-      result: verdict,
-      finalScore: rounded,
-      reasoning: rawAnswer || "No detailed reasoning available.",
-      breakdown: { aiScore, evidenceScore, userCredibilityScore, sourceScore },
-      sources,
-      verifiedAt: new Date().toISOString(),
-    };
-
-    // 9) Save to backend (skip if no API origin or id)
-    const claimId = pickId(claim);
-    if (API_ORIGIN && claimId) {
-      const url = `${API_ORIGIN}/api/claims/${encodeURIComponent(claimId)}/ai-verification`;
-      const res = await fetchWithTimeout(
-        url,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ aiVerification }),
-        },
-        10000
-      );
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        console.error("AI verification save failed:", res.status, txt);
+    if (typeof llmCall === "function") {
+      try {
+        const llm = await llmCall(prompt); // expected to return { answer?: string }
+        const raw = (llm?.answer || "").toLowerCase();
+        llmReasoning = llm?.answer || "";
+        if (raw.includes("true")) llmVerdictHint = "truth";
+        else if (raw.includes("fake") || raw.includes("false")) llmVerdictHint = "fake";
+        // if "uncertain" appears, we simply won't set a hint; the weighted score decides
+      } catch (e) {
+        console.warn("LLM call failed, using fallback:", e?.message || e);
       }
-    } else {
-      // If no API origin or id is available, we just return the result.
-      if (!API_ORIGIN) console.warn("verifyClaimWithAI: API_ORIGIN not set; skipping backend save.");
-      if (!claimId) console.warn("verifyClaimWithAI: claim id missing; skipping backend save.");
     }
 
-    // 10) Return
-    return aiVerification;
-  } catch (error) {
-    console.error("AI verification failed:", error);
+    // ---- 3) Scores for each component (0..100) ----
+    // AI score heuristic + hint boost (still binary overall later)
+    let aiScore = 60;
+    if (llmVerdictHint === "truth") aiScore = 88;
+    else if (llmVerdictHint === "fake") aiScore = 22;
+
+    // Evidence score from allEvidence quality if available; fallback to evidenceTop
+    const evidenceScore = evidenceAvg0to100(allEvidence.length ? allEvidence : evidenceTop);
+
+    // User credibility score from voter badges (stake-weighted)
+    const userCredibilityScore = userCredScoreFromVoters(voterCred);
+
+    // Source reliability across claim URL + all evidence URLs
+    const sourceScore = sourceReliabilityScore({ claimUrl: url, allEvidence });
+
+    // ---- 4) Weights (defaults to 35/25/20/20) ----
+    const w = {
+      aiWeight: typeof weightPlan?.aiWeight === "number" ? weightPlan.aiWeight : 0.35,
+      evidenceWeight: typeof weightPlan?.evidenceWeight === "number" ? weightPlan.evidenceWeight : 0.25,
+      userCredWeight: typeof weightPlan?.userCredWeight === "number" ? weightPlan.userCredWeight : 0.20,
+      sourceWeight: typeof weightPlan?.sourceWeight === "number" ? weightPlan.sourceWeight : 0.20,
+    };
+
+    // normalize in case weights don't sum to 1
+    const sumW = w.aiWeight + w.evidenceWeight + w.userCredWeight + w.sourceWeight || 1;
+    const nW = {
+      ai: w.aiWeight / sumW,
+      ev: w.evidenceWeight / sumW,
+      uc: w.userCredWeight / sumW,
+      src: w.sourceWeight / sumW,
+    };
+
+    // ---- 5) Final weighted score + binary verdict ----
+    const finalScore =
+      aiScore * nW.ai +
+      evidenceScore * nW.ev +
+      userCredibilityScore * nW.uc +
+      sourceScore * nW.src;
+
+    const rounded = Math.round(pct(finalScore));
+
+    // Binary decision: >=50 -> Truth, else Fake (adjust threshold if you want stricter)
+    const verdict = rounded >= 50 ? "Truth" : "Fake";
+
+    // ---- 6) Build sources: URLs array, unique, valid ----
+    const urlSet = new Set(
+      Array.isArray(allEvidenceUrls) && allEvidenceUrls.length
+        ? allEvidenceUrls
+        : (allEvidence || []).map((e) => e?.url).filter(Boolean)
+    );
+    const sources = Array.from(urlSet).filter((u) => {
+      try { new URL(u); return true; } catch { return false; }
+    });
+
+    // ---- 7) Return structured result (FE-friendly, binary verdict) ----
     return {
-      result: "Uncertain",
+      result: verdict,                  // "Truth" | "Fake"
+      finalScore: rounded,              // 0..100
+      confidence: rounded,              // keep same for now
+      reasoning: llmReasoning || "Heuristic decision based on evidence, voter credibility, and sources.",
+      breakdown: {
+        aiWeight: nW.ai,
+        evidenceWeight: nW.ev,
+        userCredWeight: nW.uc,
+        sourceWeight: nW.src,
+        aiScore,
+        evidenceScore,
+        userCredibilityScore,
+        sourceScore,
+      },
+      sources,                          // array of source URLs
+      verifiedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("verifyClaimWithAI failed:", error);
+    // Binary fallback on error: mark as Fake with 0 score
+    return {
+      result: "Fake",
       finalScore: 0,
-      reasoning: "AI verification failed. Please try again later.",
+      confidence: 0,
+      reasoning: "Verification failed.",
       breakdown: {},
       sources: [],
       verifiedAt: new Date().toISOString(),
