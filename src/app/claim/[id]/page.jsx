@@ -1,10 +1,11 @@
+// src/app/claim/[id]/page.jsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { storage } from '@/lib/storage';
-import { verifyClaimWithAI } from '@/lib/ai-verification';
+// import { verifyClaimWithAI } from '@/lib/ai-verification'; // ❌ removed (AI now on BE)
 import { calculateResolution } from '@/lib/resolution';
 import { checkAndUpgradeBadge } from '@/lib/badge-upgrades';
 import { getEligibleVotersCount } from '@/lib/eligibility';
@@ -33,6 +34,29 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { finalizeVoting } from '@/lib/finalize';
+
+/* ------------------------- config -------------------------------------- */
+const SERVER_BASE = 'https://verity.up.railway.app';
+
+async function postServerVerification(claimId, payload) {
+  // 🔎 Log exactly what we're sending to the BE
+  console.log('[AI VERIFY] outgoing payload:', { claimId, ...payload });
+
+  const res = await fetch(
+    `${SERVER_BASE}/api/claims/${encodeURIComponent(claimId)}/verify`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Verify API failed (${res.status}): ${txt}`);
+  }
+  return res.json(); // expect { aiVerification } or { updatedClaim }
+}
 
 /* ------------------------- helpers -------------------------------------- */
 
@@ -72,7 +96,6 @@ const normalizeApiVote = (v) => ({
   _id: v._id,
   voter: v.voter,
   voterAddress: v.voterAddress,
-  // keep both keys so legacy UI paths continue to work
   position: v.position,                 // 'truth' | 'fake'
   vote: v.position,                     // mirror to old key
   stake: Number(v.stake) || 0,
@@ -154,88 +177,75 @@ export default function ClaimDetailPage() {
     loadClaim();
   }, [params.id]);
 
- 
-// Prefer API votes/stats when available (and normalize API shape)
-useEffect(() => {
-  const claimId = params?.id;
-  if (!claimId) return;
-  let cancelled = false;
+  // Prefer API votes/stats when available (and normalize API shape)
+  useEffect(() => {
+    const claimId = params?.id;
+    if (!claimId) return;
+    let cancelled = false;
 
-  (async () => {
-    try {
-      const resp = await fetch(`https://verity.up.railway.app/api/votes/${claimId}`, { method: 'GET' });
-      if (!resp.ok) throw new Error(`API error ${resp.status}`);
-      const raw = await resp.json();
-      if (cancelled) return;
+    (async () => {
+      try {
+        const resp = await fetch(`${SERVER_BASE}/api/votes/${claimId}`, { method: 'GET' });
+        if (!resp.ok) throw new Error(`API error ${resp.status}`);
+        const raw = await resp.json();
+        if (cancelled) return;
 
-      console.log('raw: ', raw);
+        // --- Robust extraction of votes array, regardless of shape ---
+        const maybeVotes =
+          (Array.isArray(raw?.votes) && raw.votes) ||
+          (Array.isArray(raw?.data?.votes) && raw.data.votes) ||
+          (Array.isArray(raw?.data) && raw.data) ||
+          (Array.isArray(raw) && raw) ||
+          [];
 
-      // --- Robust extraction of the votes array, regardless of shape ---
-      const maybeVotes =
-        (Array.isArray(raw?.votes) && raw.votes) ||
-        (Array.isArray(raw?.data?.votes) && raw.data.votes) ||
-        (Array.isArray(raw?.data) && raw.data) ||
-        (Array.isArray(raw) && raw) ||
-        [];
+        const looksLikeVote = (v) =>
+          v && (
+            typeof v.position === 'string' ||
+            typeof v.vote === 'string' ||
+            typeof v.voterAddress === 'string' ||
+            typeof v.voter === 'string' ||
+            typeof v.stake !== 'undefined'
+          );
 
-      console.log('maybeVotes (pre-filter): ', maybeVotes);
+        const votesArr = maybeVotes.filter(looksLikeVote);
+        if (votesArr.length === 0) {
+          setApiVotes([]);
+          setApiVoteStats({ truthVotes: 0, fakeVotes: 0, truthStake: 0, fakeStake: 0 });
+          return;
+        }
 
-      // Some APIs return “lean” docs (only _id, claimId). We only keep rows that look like votes.
-      const looksLikeVote = (v) =>
-        v && (
-          typeof v.position === 'string' ||
-          typeof v.vote === 'string' ||
-          typeof v.voterAddress === 'string' ||
-          typeof v.voter === 'string' ||
-          typeof v.stake !== 'undefined'
-        );
+        const normalized = votesArr.map(normalizeApiVote);
 
-      const votesArr = maybeVotes.filter(looksLikeVote);
-      console.log('votesArr (filtered): ', votesArr);
+        const apiTruthVotes = Number.isFinite(Number(raw?.truthVotes)) ? Number(raw.truthVotes) : undefined;
+        const apiFakeVotes  = Number.isFinite(Number(raw?.fakeVotes))  ? Number(raw.fakeVotes)  : undefined;
 
-      // If the endpoint really returns only {_id, claimId}, at least avoid crashing:
-      if (votesArr.length === 0) {
-        // Nothing vote-like came back; clear API data so UI falls back gracefully
+        const localCounts = summarizeTruthFake(normalized);
+        const truthVotes = apiTruthVotes ?? localCounts.truthVotes;
+        const fakeVotes  = apiFakeVotes  ?? localCounts.fakeVotes;
+
+        const truthStake = Number.isFinite(Number(raw?.truthStake))
+          ? Number(raw.truthStake)
+          : normalized
+              .filter(v => normPos(v.position ?? v.vote) === 'truth')
+              .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+
+        const fakeStake = Number.isFinite(Number(raw?.fakeStake))
+          ? Number(raw.fakeStake)
+          : normalized
+              .filter(v => normPos(v.position ?? v.vote) === 'fake')
+              .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+
+        setApiVotes(normalized);
+        setApiVoteStats({ truthVotes, fakeVotes, truthStake, fakeStake });
+      } catch (e) {
+        console.warn('Votes API fetch failed, using local fallback:', e?.message || e);
         setApiVotes([]);
-        setApiVoteStats({ truthVotes: 0, fakeVotes: 0, truthStake: 0, fakeStake: 0 });
-        return;
+        setApiVoteStats(null);
       }
+    })();
 
-      const normalized = votesArr.map(normalizeApiVote);
-
-      // Prefer API-provided counts if present; else compute truth/fake-only locally
-      const apiTruthVotes = Number.isFinite(Number(raw?.truthVotes)) ? Number(raw.truthVotes) : undefined;
-      const apiFakeVotes  = Number.isFinite(Number(raw?.fakeVotes))  ? Number(raw.fakeVotes)  : undefined;
-
-      const localCounts = summarizeTruthFake(normalized);
-
-      const truthVotes = apiTruthVotes ?? localCounts.truthVotes;
-      const fakeVotes  = apiFakeVotes  ?? localCounts.fakeVotes;
-
-      const truthStake = Number.isFinite(Number(raw?.truthStake))
-        ? Number(raw.truthStake)
-        : normalized
-            .filter(v => normPos(v.position ?? v.vote) === 'truth')
-            .reduce((s, v) => s + (Number(v.stake) || 0), 0);
-
-      const fakeStake = Number.isFinite(Number(raw?.fakeStake))
-        ? Number(raw.fakeStake)
-        : normalized
-            .filter(v => normPos(v.position ?? v.vote) === 'fake')
-            .reduce((s, v) => s + (Number(v.stake) || 0), 0);
-
-      setApiVotes(normalized);
-      setApiVoteStats({ truthVotes, fakeVotes, truthStake, fakeStake });
-    } catch (e) {
-      console.warn('Votes API fetch failed, using local fallback:', e?.message || e);
-      setApiVotes([]); // don’t leave stale values around
-      setApiVoteStats(null);
-    }
-  })();
-
-  return () => { cancelled = true; };
-}, [params?.id]);
-
+    return () => { cancelled = true; };
+  }, [params?.id]);
 
   // Track user's vote (prefer API votes)
   useEffect(() => {
@@ -311,234 +321,210 @@ useEffect(() => {
     return () => { cancelled = true; };
   }, [claim]);
 
-
-const handleVotingEnd = async (endedClaim) => {
-  if (!endedClaim || endedClaim.status !== 'voting') return;
-  if (verifying) return;
-  setVerifying(true);
-
-  try {
-    // 1) Optimistic UI lock
-    setClaim((c) => ({ ...(c || endedClaim), status: 'ended' }));
-
-    // 2) Build AI context on the FE (expanded)
-    const srcVotes = (apiVotes?.length ? apiVotes : votes) || [];
-    const { truthVotes, fakeVotes } = summarizeTruthFake(srcVotes);
-
-    const truthStake = srcVotes
-      .filter(v => normPos(v.position ?? v.vote) === 'truth')
-      .reduce((s, v) => s + (Number(v.stake) || 0), 0);
-
-    const fakeStake = srcVotes
-      .filter(v => normPos(v.position ?? v.vote) === 'fake')
-      .reduce((s, v) => s + (Number(v.stake) || 0), 0);
-
-    const voteStats = { truthVotes, fakeVotes, truthStake, fakeStake };
-
-    // ---- Evidence: claim evidence + each vote's evidence URLs ----
-    const claimEv = normalizeEvidence(endedClaim.evidence).map((e) => ({
-      ...e,
-      from: 'claim',
-      addedBy: e.addedBy || endedClaim.displayName || '',
-    }));
-
-    const votesEv = srcVotes.flatMap((v) => {
-      const urls = normalizeVoteEvidence(v.evidence);
-      return urls.map((url) => ({
-        url,
-        domain: safeDomainFromUrl(url),
-        qualityScore: undefined,
-        from: 'vote',
-        voterAddress: v.voterAddress,
-      }));
-    });
-
-    const allEvidence = (() => {
-      const seen = new Set();
-      const out = [];
-      for (const ev of [...claimEv, ...votesEv]) {
-        if (typeof ev.url !== 'string' || !ev.url) continue;
-        const key = ev.url.trim();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(ev);
-      }
-      return out;
-    })();
-
-    const evidenceTop = claimEv
-      .slice()
-      .sort((a, b) => (Number(b.qualityScore) || 0) - (Number(a.qualityScore) || 0))
-      .slice(0, 12);
-
-    // ---- Per-voter credibility / badges ----
-    const voterCred = srcVotes.map((v) => {
-      const profile = voteProfiles?.[v.voterAddress] || {};
-      const categoryBadgeObj = Array.isArray(profile?.badges)
-        ? profile.badges.find((b) => b.category === endedClaim.category)
-        : undefined;
-
-      const badgeTier =
-        v.badgeTier ||
-        categoryBadgeObj?.tier ||
-        categoryBadgeObj?.level ||
-        profile?.tier ||
-        'none';
-
-      const roleBadges =
-        (Array.isArray(v.roleBadges) && v.roleBadges.length ? v.roleBadges : undefined) ||
-        (Array.isArray(profile?.roles) ? profile.roles : []) ||
-        [];
-
-      const categoryBadge =
-        v.categoryBadge ||
-        categoryBadgeObj?.category ||
-        endedClaim.category ||
-        '';
-
-      return {
-        voterAddress: v.voterAddress,
-        position: v.position ?? v.vote,
-        stake: Number(v.stake) || 0,
-        badgeTier,
-        categoryBadge,
-        roleBadges,
-        truthScore: Number(categoryBadgeObj?.truthScore) || undefined,
-        totalVotes: Number(categoryBadgeObj?.totalVotes) || undefined,
-        correctVotes: Number(categoryBadgeObj?.correctVotes) || undefined,
-        overallTruthScore: Number(profile?.overallTruthScore) || undefined,
-      };
-    });
-
-    // ---- Weight plan for AI breakdown ----
-    const weightPlan = {
-      aiWeight: 0.35,
-      evidenceWeight: 0.25,
-      userCredWeight: 0.20,
-      sourceWeight: 0.20,
-    };
-
-    // 3) FE AI
-    const aiResult = await verifyClaimWithAI({
-      id: endedClaim.id,
-      title: endedClaim.title,
-      url: endedClaim.url,
-      summary: endedClaim.summary,
-      category: endedClaim.category,
-      evidenceTop,
-      allEvidence,
-      allEvidenceUrls: allEvidence.map((e) => e.url),
-      voteStats,
-      voterCred,
-      weightPlan,
-    });
-
-    const aiVerdict = { ...aiResult, analyzedAt: Date.now(), weightMultiplier: 1.0 };
-    setClaim((c) => ({ ...(c || endedClaim), aiVerdict }));
-
-    // 4) SAVE AI VERDICT to BE (PATCH) and update UI from the result
-    const aiVerificationPayload = {
-      result: String(aiVerdict.result || 'Uncertain'),
-      finalScore: Number(aiVerdict.finalScore) || 0,
-      reasoning: aiVerdict.reasoning || '',
-      breakdown: {
-        aiScore: Number(aiVerdict.breakdown?.aiScore) || 0,
-        evidenceScore: Number(aiVerdict.breakdown?.evidenceScore) || 0,
-        userCredibilityScore: Number(aiVerdict.breakdown?.userCredibilityScore) || 0,
-        sourceScore: Number(aiVerdict.breakdown?.sourceScore) || 0,
-      },
-      sources: Array.isArray(aiVerdict.sources) ? aiVerdict.sources : [],
-      verifiedAt: aiVerdict.verifiedAt || new Date().toISOString(),
-    };
-
-    // Use claimId if present; fall back to id for older data
-    const claimKey = endedClaim.claimId || endedClaim.id;
+  const handleVotingEnd = async (endedClaim) => {
+    if (!endedClaim || endedClaim.status !== 'voting') return;
+    if (verifying) return;
+    setVerifying(true);
 
     try {
-      const patchRes = await fetch(`https://verity.up.railway.app/api/claims/${encodeURIComponent(claimKey)}/ai-verification`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ aiVerification: aiVerificationPayload }),
+      // 1) Optimistic UI lock
+      setClaim((c) => ({ ...(c || endedClaim), status: 'ended' }));
+
+      // 2) Build context (same as before)
+      const srcVotes = (apiVotes?.length ? apiVotes : votes) || [];
+      const { truthVotes, fakeVotes } = summarizeTruthFake(srcVotes);
+
+      const truthStake = srcVotes
+        .filter(v => normPos(v.position ?? v.vote) === 'truth')
+        .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+
+      const fakeStake = srcVotes
+        .filter(v => normPos(v.position ?? v.vote) === 'fake')
+        .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+
+      const voteStats = { truthVotes, fakeVotes, truthStake, fakeStake };
+
+      const claimEv = normalizeEvidence(endedClaim.evidence).map((e) => ({
+        ...e,
+        from: 'claim',
+        addedBy: e.addedBy || endedClaim.displayName || '',
+      }));
+
+      const votesEv = srcVotes.flatMap((v) => {
+        const urls = normalizeVoteEvidence(v.evidence);
+        return urls.map((url) => ({
+          url,
+          domain: safeDomainFromUrl(url),
+          qualityScore: undefined,
+          from: 'vote',
+          voterAddress: v.voterAddress,
+        }));
       });
 
-      if (!patchRes.ok) {
-        const errTxt = await patchRes.text().catch(() => '');
-        console.error('AI verification PATCH failed:', patchRes.status, errTxt);
-      } else {
-        const patched = await patchRes.json().catch(() => null);
-        // If BE returns the updated claim, merge it into UI
-        if (patched?.updatedClaim) {
-          setClaim((c) => ({ ...(c || endedClaim), ...patched.updatedClaim }));
-        } else {
-          // Otherwise at least ensure aiVerification mirrors what we saved
-          setClaim((c) => ({
-            ...(c || endedClaim),
-            aiVerification: aiVerificationPayload,
-          }));
+      const allEvidence = (() => {
+        const seen = new Set();
+        const out = [];
+        for (const ev of [...claimEv, ...votesEv]) {
+          if (typeof ev.url !== 'string' || !ev.url) continue;
+          const key = ev.url.trim();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(ev);
         }
-      }
-    } catch (e) {
-      console.error('AI verification PATCH error:', e);
-    }
+        return out;
+      })();
 
-    // 5) Refresh votes from BE (optional but keeps totals in sync)
-    try {
-      const vResp = await fetch(`https://verity.up.railway.app/api/votes/${encodeURIComponent(claimKey)}`, { method: 'GET' });
-      if (vResp.ok) {
-        const raw = await vResp.json();
-        console.log('Rawww: ', raw)
-        const maybeVotes =
-          (Array.isArray(raw?.votes) && raw.votes) ||
-          (Array.isArray(raw?.data?.votes) && raw.data.votes) ||
-          (Array.isArray(raw?.data) && raw.data) ||
-          (Array.isArray(raw) && raw) ||
+      const evidenceTop = claimEv
+        .slice()
+        .sort((a, b) => (Number(b.qualityScore) || 0) - (Number(a.qualityScore) || 0))
+        .slice(0, 12);
+
+      const voterCred = srcVotes.map((v) => {
+        const profile = voteProfiles?.[v.voterAddress] || {};
+        const categoryBadgeObj = Array.isArray(profile?.badges)
+          ? profile.badges.find((b) => b.category === endedClaim.category)
+          : undefined;
+
+        const badgeTier =
+          v.badgeTier ||
+          categoryBadgeObj?.tier ||
+          categoryBadgeObj?.level ||
+          profile?.tier ||
+          'none';
+
+        const roleBadges =
+          (Array.isArray(v.roleBadges) && v.roleBadges.length ? v.roleBadges : undefined) ||
+          (Array.isArray(profile?.roles) ? profile.roles : []) ||
           [];
 
-        const looksLikeVote = (v) =>
-          v && (
-            typeof v.position === 'string' ||
-            typeof v.vote === 'string' ||
-            typeof v.voterAddress === 'string' ||
-            typeof v.voter === 'string' ||
-            typeof v.stake !== 'undefined'
-          );
+        const categoryBadge =
+          v.categoryBadge ||
+          categoryBadgeObj?.category ||
+          endedClaim.category ||
+          '';
 
-        const votesArr = maybeVotes.filter(looksLikeVote).map(normalizeApiVote);
-        setApiVotes(votesArr);
+        return {
+          voterAddress: v.voterAddress,
+          position: v.position ?? v.vote,
+          stake: Number(v.stake) || 0,
+          badgeTier,
+          categoryBadge,
+          roleBadges,
+          truthScore: Number(categoryBadgeObj?.truthScore) || undefined,
+          totalVotes: Number(categoryBadgeObj?.totalVotes) || undefined,
+          correctVotes: Number(categoryBadgeObj?.correctVotes) || undefined,
+          overallTruthScore: Number(profile?.overallTruthScore) || undefined,
+        };
+      });
 
-        const recomputed = summarizeTruthFake(votesArr);
-        const recomputedTruthStake = votesArr
-          .filter(v => normPos(v.position ?? v.vote) === 'truth')
-          .reduce((s, v) => s + (Number(v.stake) || 0), 0);
-        const recomputedFakeStake = votesArr
-          .filter(v => normPos(v.position ?? v.vote) === 'fake')
-          .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+      // ---- Fixed weights for transparency ----
+      const weightPlan = {
+        aiWeight: 0.35,
+        evidenceWeight: 0.25,
+        userCredWeight: 0.20,
+        sourceWeight: 0.20,
+      };
 
-        setApiVoteStats({
-          truthVotes: recomputed.truthVotes,
-          fakeVotes: recomputed.fakeVotes,
-          truthStake: recomputedTruthStake,
-          fakeStake: recomputedFakeStake,
-        });
-      } else {
+      // 3) 🚀 NEW: send to backend for AI verification (single call)
+      const claimKey = endedClaim.claimId || endedClaim.id;
+
+      const aiVerifyPayload = {
+        claim: {
+          id: endedClaim.id,
+          claimId: endedClaim.claimId,
+          title: endedClaim.title,
+          url: endedClaim.url,
+          summary: endedClaim.summary,
+          category: endedClaim.category,
+        },
+        voteStats,
+        evidenceTop,
+        allEvidence,
+        allEvidenceUrls: allEvidence.map((e) => e.url).filter(Boolean),
+        voterCred,
+        weightPlan,
+      };
+
+      // 🔎 See exactly what BE receives
+      console.log('[AI VERIFY] payload to BE:', aiVerifyPayload);
+
+      let serverResult = null;
+      try {
+        serverResult = await postServerVerification(claimKey, aiVerifyPayload);
+        const aiVerification =
+          serverResult?.aiVerification ||
+          serverResult?.updatedClaim?.aiVerification ||
+          serverResult?.aiVerdict ||
+          null;
+
+        if (aiVerification) {
+          setClaim((c) => ({
+            ...(c || endedClaim),
+            aiVerification,
+            aiVerdict: aiVerification,
+            status: serverResult?.updatedClaim?.status || (c?.status ?? 'verified'),
+          }));
+        } else {
+          console.warn('[AI VERIFY] No aiVerification returned from server:', serverResult);
+        }
+      } catch (e) {
+        console.error('Server verification failed:', e);
+        // toast.error('AI verification failed. Please retry.');
+      }
+
+      // 4) Optional: refresh votes from BE to sync totals
+      try {
+        const vResp = await fetch(`${SERVER_BASE}/api/votes/${encodeURIComponent(claimKey)}`, { method: 'GET' });
+        if (vResp.ok) {
+          const raw = await vResp.json();
+          const maybeVotes =
+            (Array.isArray(raw?.votes) && raw.votes) ||
+            (Array.isArray(raw?.data?.votes) && raw.data.votes) ||
+            (Array.isArray(raw?.data) && raw.data) ||
+            (Array.isArray(raw) && raw) ||
+            [];
+
+          const looksLikeVote = (v) =>
+            v && (
+              typeof v.position === 'string' ||
+              typeof v.vote === 'string' ||
+              typeof v.voterAddress === 'string' ||
+              typeof v.voter === 'string' ||
+              typeof v.stake !== 'undefined'
+            );
+
+          const votesArr = maybeVotes.filter(looksLikeVote).map(normalizeApiVote);
+          setApiVotes(votesArr);
+
+          const recomputed = summarizeTruthFake(votesArr);
+          const recomputedTruthStake = votesArr
+            .filter(v => normPos(v.position ?? v.vote) === 'truth')
+            .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+          const recomputedFakeStake = votesArr
+            .filter(v => normPos(v.position ?? v.vote) === 'fake')
+            .reduce((s, v) => s + (Number(v.stake) || 0), 0);
+
+          setApiVoteStats({
+            truthVotes: recomputed.truthVotes,
+            fakeVotes: recomputed.fakeVotes,
+            truthStake: recomputedTruthStake,
+            fakeStake: recomputedFakeStake,
+          });
+        } else {
+          setApiVotes([]);
+          setApiVoteStats(null);
+        }
+      } catch (e) {
+        console.warn('Vote refresh failed:', e?.message || e);
         setApiVotes([]);
         setApiVoteStats(null);
       }
-    } catch (e) {
-      console.warn('Vote refresh failed:', e?.message || e);
-      setApiVotes([]);
-      setApiVoteStats(null);
+    } catch (err) {
+      console.error('Finalize error:', err);
+    } finally {
+      setVerifying(false);
     }
-  } catch (err) {
-    console.error('Finalize error:', err);
-  } finally {
-    setVerifying(false);
-  }
-};
-
-
-
-
+  };
 
   const copyToClipboard = async (text) => {
     try { await navigator.clipboard.writeText(text); } catch {}
@@ -933,97 +919,91 @@ const handleVotingEnd = async (endedClaim) => {
               </CardContent>
             </Card>
 
-            {/* --- Weighted Resolution (only after voting time) --- */}
-            {/* --- AI Verdict (scores-based) --- */}
-{votingEnded && (claim?.aiVerification || claim?.aiVerdict) && (
-  <Card className="border-2 border-green-200 bg-green-50">
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2 dark:text-white">
-        <Scale className="h-6 w-6 text-green-600" />
-        Weighted Resolution
-      </CardTitle>
-    </CardHeader>
+            {/* --- Weighted Resolution (after voting) --- */}
+            {votingEnded && (claim?.aiVerification || claim?.aiVerdict) && (
+              <Card className="border-2 border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 dark:text-white">
+                    <Scale className="h-6 w-6 text-green-600" />
+                    Weighted Resolution
+                  </CardTitle>
+                </CardHeader>
 
-    {(() => {
-      const av = claim.aiVerification || claim.aiVerdict; // prefer BE-saved, else FE
-      const result = String(av?.result || '').toLowerCase(); // 'truth' | 'fake' | 'uncertain'
-      const score = safeNumber(av?.finalScore, 0);           // 0..100
-      const b = av?.breakdown || {};
-      const aiScore = safeNumber(b.aiScore, 0);
-      const evidenceScore = safeNumber(b.evidenceScore, 0);
-      const userCredScore = safeNumber(b.userCredibilityScore, 0);
-      const sourceScore = safeNumber(b.sourceScore, 0);
+                {(() => {
+                  const av = claim.aiVerification || claim.aiVerdict;
+                  const result = String(av?.result || '').toLowerCase();
+                  const score = safeNumber(av?.finalScore, 0);
+                  const b = av?.breakdown || {};
+                  const aiScore = safeNumber(b.aiScore, 0);
+                  const evidenceScore = safeNumber(b.evidenceScore, 0);
+                  const userCredScore = safeNumber(b.userCredibilityScore, 0);
+                  const sourceScore = safeNumber(b.sourceScore, 0);
 
-      const badgeClass =
-        result === 'truth'
-          ? 'bg-green-600 text-white text-lg px-4 py-2'
-          : result === 'fake'
-          ? 'bg-red-600 text-white text-lg px-4 py-2'
-          : 'bg-yellow-600 text-white text-lg px-4 py-2';
+                  const badgeClass =
+                    result === 'truth'
+                      ? 'bg-green-600 text-white text-lg px-4 py-2'
+                      : result === 'fake'
+                      ? 'bg-red-600 text-white text-lg px-4 py-2'
+                      : 'bg-yellow-600 text-white text-lg px-4 py-2';
 
-      const label =
-        result === 'truth' ? 'Verified Truth'
-        : result === 'fake' ? 'Verified Fake'
-        : 'Uncertain';
+                  const label =
+                    result === 'truth' ? 'Verified Truth'
+                    : result === 'fake' ? 'Verified Fake'
+                    : 'Uncertain';
 
-      return (
-        <CardContent className="space-y-4">
-          {/* Outcome */}
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold dark:text-white">Final Outcome:</span>
-            <Badge className={badgeClass}>{label}</Badge>
-          </div>
+                  return (
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg font-semibold dark:text-white">Final Outcome:</span>
+                        <Badge className={badgeClass}>{label}</Badge>
+                      </div>
 
-          {/* Overall score */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="dark:text-white">AI Truth Score:</span>
-              <span className="font-semibold dark:text-white">{score.toFixed(1)}%</span>
-            </div>
-            <Progress value={score} className="h-2" />
-          </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="dark:text-white">AI Truth Score:</span>
+                          <span className="font-semibold dark:text-white">{score.toFixed(1)}%</span>
+                        </div>
+                        <Progress value={score} className="h-2" />
+                      </div>
 
-          {/* Scores breakdown (NOT weights) */}
-          <div className="p-3 bg-white rounded border dark:bg-[#252526]">
-            <p className="text-sm font-semibold mb-2 dark:text-white">Score Breakdown:</p>
-            <div className="grid grid-cols-2 gap-2 text-xs dark:text-gray-400">
-              <div>AI Score: {aiScore.toFixed(2)}</div>
-              <div>Evidence Score: {evidenceScore.toFixed(2)}</div>
-              <div>User Credibility Score: {userCredScore.toFixed(2)}</div>
-              <div>Source Score: {sourceScore.toFixed(2)}</div>
-            </div>
-          </div>
+                      <div className="p-3 bg-white rounded border dark:bg-[#252526]">
+                        <p className="text-sm font-semibold mb-2 dark:text-white">Score Breakdown:</p>
+                        <div className="grid grid-cols-2 gap-2 text-xs dark:text-gray-400">
+                          <div>AI Score: {aiScore.toFixed(2)}</div>
+                          <div>Evidence Score: {evidenceScore.toFixed(2)}</div>
+                          <div>User Credibility Score: {userCredScore.toFixed(2)}</div>
+                          <div>Source Score: {sourceScore.toFixed(2)}</div>
+                        </div>
+                      </div>
 
-          {/* Optional: reasoning & sources */}
-          {av?.reasoning && (
-            <div className="p-3 bg-white rounded border dark:bg-[#252526]">
-              <p className="text-sm font-semibold mb-2 dark:text-white">Reasoning</p>
-              <p className="text-sm dark:text-gray-300">{av.reasoning}</p>
-            </div>
-          )}
-          {Array.isArray(av?.sources) && av.sources.length > 0 && (
-            <div className="p-3 bg-white rounded border dark:bg-[#252526]">
-              <p className="text-sm font-semibold mb-2 dark:text-white">AI Sources</p>
-              <ul className="list-disc list-inside text-sm space-y-1">
-                {av.sources.slice(0, 8).map((s, i) => (
-                  <li key={`${s}-${i}`}>
-                    <a className="text-blue-600" href={s} target="_blank" rel="noreferrer">
-                      {s}
-                    </a>
-                  </li>
-                ))}
-                {av.sources.length > 8 && (
-                  <li className="text-gray-500 text-xs">+{av.sources.length - 8} more…</li>
-                )}
-              </ul>
-            </div>
-          )}
-        </CardContent>
-      );
-    })()}
-  </Card>
-)}
-
+                      {av?.reasoning && (
+                        <div className="p-3 bg-white rounded border dark:bg-[#252526]">
+                          <p className="text-sm font-semibold mb-2 dark:text-white">Reasoning</p>
+                          <p className="text-sm dark:text-gray-300">{av.reasoning}</p>
+                        </div>
+                      )}
+                      {Array.isArray(av?.sources) && av.sources.length > 0 && (
+                        <div className="p-3 bg-white rounded border dark:bg-[#252526]">
+                          <p className="text-sm font-semibold mb-2 dark:text-white">AI Sources</p>
+                          <ul className="list-disc list-inside text-sm space-y-1">
+                            {av.sources.slice(0, 8).map((s, i) => (
+                              <li key={`${s}-${i}`}>
+                                <a className="text-blue-600" href={s} target="_blank" rel="noreferrer">
+                                  {s}
+                                </a>
+                              </li>
+                            ))}
+                            {av.sources.length > 8 && (
+                              <li className="text-gray-500 text-xs">+{av.sources.length - 8} more…</li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+                    </CardContent>
+                  );
+                })()}
+              </Card>
+            )}
 
             {verifying && (
               <Alert className="bg-blue-50 border-blue-200 dark:bg-[#252526]">
