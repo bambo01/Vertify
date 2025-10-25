@@ -1,14 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
+// animations
+import FadeInWhenVisible from "@/components/FadeInWhenVisible";
+import { StaggerInView, StaggerItem } from "@/components/StaggerInView";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Shield,
   Vote,
   CheckCircle,
-  Coins,
-  TrendingUp,
   ExternalLink,
   Linkedin,
   Facebook,
@@ -90,395 +90,438 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#1A2745]">
+      {/* ========================= HERO ========================= */}
       <section className="relative isolate min-h-screen overflow-hidden">
         {/* BG image + overlay */}
         <div
           aria-hidden
           className="
-      pointer-events-none absolute inset-x-0 bottom-0 z-0
-      h-[260px] md:h-[340px] lg:h-[470px] xl:h-[630px]
-      bg-[url('/main.webp')] dark:bg-[url('/main1.webp')]
-      bg-no-repeat bg-bottom bg-contain
-    "
+            pointer-events-none absolute inset-x-0 bottom-0 z-0
+            h-[260px] md:h-[340px] lg:h-[470px] xl:h-[630px]
+            bg-[url('/main.webp')] dark:bg-[url('/main1.webp')]
+            bg-no-repeat bg-bottom bg-contain
+          "
         />
 
         {/* Content */}
-        <div className="relative z-10 text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
-          <h1 className="text-2xl md:text-5xl font-medium leading-[1.15] md:leading-[1.12] pb-[2px] mb-6">
-            <span
-              className="bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA]
+        <FadeInWhenVisible once={false}>
+          <div className="relative z-10 text-center mb-16 max-w-4xl mx-auto px-4 pt-20 md:pt-28">
+            <h1
+              className="text-2xl md:text-5xl font-medium leading-[1.15] md:leading-[1.12] pb-[2px] mb-6 bg-gradient-to-r from-[#29B2ED] to-[#1262FF]
                        dark:from-[#5EC7F3] dark:to-[#FFFFFF]
                        bg-clip-text text-transparent"
             >
               Transforming Fact-Checking into a Fun and Rewarding Experience
-            </span>
-          </h1>
+            </h1>
 
-          <p className="text-sm md:text-lg font-light mb-5 mx-auto max-w-[44rem]">
-            Helping people trust what they read through fact-checking and earn
-            for being accurate — secured on Base.
-          </p>
+            <FadeInWhenVisible y={10} once={false}>
+              <p className="text-sm md:text-lg font-light mb-5 mx-auto max-w-[44rem]">
+                Helping people trust what they read through fact-checking and
+                earn for being accurate — secured on Base.
+              </p>
+            </FadeInWhenVisible>
 
-          <div className="flex gap-4 justify-center flex-wrap">
-            <Link href="/explore">
-              <Button
-                size="lg"
-                className="text-white bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-90 hover:shadow-md"
-              >
-                Explore Claims
-              </Button>
-            </Link>
-            <Link href="/submit">
-              <Button
-                size="lg"
-                className="bg-white text-black border border-gray-200 hover:text-[#227DC3] hover:shadow-md dark:bg-[#1A2745] dark:text-white dark:hover:bg-white dark:hover:text-[#1A2745]"
-              >
-                Submit Claim
-              </Button>
-            </Link>
+            <StaggerInView once={false} delay={0.05}>
+              <div className="flex gap-4 justify-center flex-wrap">
+                <StaggerItem>
+                  <Link href="/explore">
+                    <Button
+                      size="lg"
+                      className="text-white bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-90 hover:shadow-md"
+                    >
+                      Explore Claims
+                    </Button>
+                  </Link>
+                </StaggerItem>
+                <StaggerItem>
+                  <Link href="/submit">
+                    <Button
+                      size="lg"
+                      className="bg-white text-black border border-gray-200 hover:text-[#227DC3] hover:bg-white hover:shadow-md dark:bg-[#1A2745] dark:text-white dark:hover:bg-white dark:hover:text-[#1A2745]"
+                    >
+                      Submit Claim
+                    </Button>
+                  </Link>
+                </StaggerItem>
+              </div>
+            </StaggerInView>
           </div>
-        </div>
+        </FadeInWhenVisible>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section
-        id="how-it-works"
-        className="bg-white dark:bg-[#0e2346] py-16 text-white"
-      >
-        <div className="mx-auto max-w-7xl px-4">
-          {/* Heading */}
-          <h2 className="text-center text-2xl font-semibold tracking-wide">
-            <span className="font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA]  dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
-              HOW IT WORKS
-            </span>
-          </h2>
+      {/* ==================== HOW IT WORKS ===================== */}
+      <FadeInWhenVisible once={false}>
+        <section
+          id="how-it-works"
+          className="bg-white dark:bg-[#0e2346] py-16 text-white"
+        >
+          <div className="mx-auto max-w-7xl px-4">
+            {/* Heading */}
+            <FadeInWhenVisible y={12} once={false}>
+              <h2 className="text-center text-2xl font-semibold tracking-wide">
+                <span className="font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA]  dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
+                  HOW IT WORKS
+                </span>
+              </h2>
 
-          {/* Subheading */}
-          <p className="mt-3 text-center text-sm md:text-base text-gray-800 dark:text-blue-100/80 max-w-3xl mx-auto">
-            Users submit claims, others stake tokens to vote on their accuracy,
-            and Vertify anchors the final verified results on-chain.
-          </p>
+              {/* Subheading */}
+              <p className="mt-3 text-center text-[10px] md:text-[13px] text-gray-800/75 dark:text-blue-100/80 max-w-xl mx-auto">
+                users submit claims, others stake tokens to vote on their
+                accuracy, and Vertify anchors the final verified results
+                on-chain.
+              </p>
+            </FadeInWhenVisible>
 
-          {/* Cards */}
-          <div className="mt-10 grid gap-6 md:grid-cols-3">
-            {/* 1. Submit Claims */}
-            <Card className="border-0 dark:bg-[#132a54] shadow-lg shadow-black/20">
-              <CardContent className="pt-8 pb-8 text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 ring-1 ring-white/10">
-                  <ExternalLink className="h-6 w-6 text-blue-300" />
-                </div>
-                <h3 className="text-base font-semibold mb-2 dark:text-white">
-                  Submit Claims
-                </h3>
-                <p className="text-[13px] leading-relaxed text-gray-800 dark:text-blue-100/80">
-                  Post news items with links and summaries. Claims are anchored
-                  on Base blockchain for transparency.
-                </p>
-              </CardContent>
-            </Card>
+            {/* Cards */}
+            <StaggerInView once={false} delay={0.1}>
+              <div className="mt-10 grid gap-6 md:grid-cols-3">
+                {/* 1. Submit Claims */}
+                <StaggerItem>
+                  <Card className="border-0 dark:bg-[#132a54] shadow-lg shadow-black/20">
+                    <CardContent className="pt-8 pb-8 text-center">
+                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 ring-1 ring-white/10">
+                        <ExternalLink className="h-6 w-6 text-blue-300" />
+                      </div>
+                      <h3 className="text-base font-semibold mb-2 dark:text-white">
+                        Submit Claims
+                      </h3>
+                      <p className="text-[13px] leading-relaxed text-gray-800 dark:text-blue-100/80">
+                        Post news items with links and summaries. Claims are
+                        anchored on Base blockchain for transparency.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </StaggerItem>
 
-            {/* 2. Stake & Vote */}
-            <Card className="border-0 dark:bg-[#132a54] shadow-lg shadow-black/20">
-              <CardContent className="pt-8 pb-8 text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 ring-1 ring-white/10">
-                  <Vote className="h-6 w-6 text-blue-300" />
-                </div>
-                <h3 className="text-base font-semibold mb-2 dark:text-white">
-                  Stake &amp; Vote
-                </h3>
-                <p className="text-[13px] leading-relaxed text-gray-800 dark:text-blue-100/80">
-                  Voters stake tokens to vote Truth or Fake. Aligned voters earn
-                  rewards from the losing side’s pool.
-                </p>
-              </CardContent>
-            </Card>
+                {/* 2. Stake & Vote */}
+                <StaggerItem>
+                  <Card className="border-0 dark:bg-[#132a54] shadow-lg shadow-black/20">
+                    <CardContent className="pt-8 pb-8 text-center">
+                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 ring-1 ring-white/10">
+                        <Vote className="h-6 w-6 text-blue-300" />
+                      </div>
+                      <h3 className="text-base font-semibold mb-2 dark:text-white">
+                        Stake &amp; Vote
+                      </h3>
+                      <p className="text-[13px] leading-relaxed text-gray-800 dark:text-blue-100/80">
+                        Voters stake tokens to vote Truth or Fake. Aligned
+                        voters earn rewards from the losing side’s pool.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </StaggerItem>
 
-            {/* 3. AI Verification */}
-            <Card className="border-0 dark:bg-[#132a54] shadow-lg shadow-black/20">
-              <CardContent className="pt-8 pb-8 text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 ring-1 ring-white/10">
-                  <CheckCircle className="h-6 w-6 text-blue-300" />
-                </div>
-                <h3 className="text-base font-semibold mb-2 dark:text-white">
-                  AI Verification
-                </h3>
-                <p className="text-[13px] leading-relaxed text-gray-800 dark:text-blue-100/80">
-                  When voting ends, AI analyzes the claim with sources and
-                  provides a fact-checked verdict.
-                </p>
-              </CardContent>
-            </Card>
+                {/* 3. AI Verification */}
+                <StaggerItem>
+                  <Card className="border-0 dark:bg-[#132a54] shadow-lg shadow-black/20">
+                    <CardContent className="pt-8 pb-8 text-center">
+                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 ring-1 ring-white/10">
+                        <CheckCircle className="h-6 w-6 text-blue-300" />
+                      </div>
+                      <h3 className="text-base font-semibold mb-2 dark:text-white">
+                        AI Verification
+                      </h3>
+                      <p className="text-[13px] leading-relaxed text-gray-800 dark:text-blue-100/80">
+                        When voting ends, AI analyzes the claim with sources and
+                        provides a fact-checked verdict.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </StaggerItem>
+              </div>
+            </StaggerInView>
           </div>
-        </div>
-      </section>
+        </section>
+      </FadeInWhenVisible>
 
-      {/* WHO BENEFITS? */}
+      {/* ===================== WHO BENEFITS ===================== */}
       <section
         id="who-benefits"
         className="relative dark:bg-[#0e2346] py-16 text-white"
       >
         <div className="relative mx-auto max-w-7xl px-4">
-          {/* Title */}
-          <h2 className="text-center text-2xl font-semibold tracking-wide">
-            <span className=" font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
-              WHO BENEFITS?
-            </span>
-          </h2>
+          {/* Title + subtitle */}
+          <FadeInWhenVisible once={false}>
+            <h2 className="text-center text-2xl font-semibold tracking-wide">
+              <span className=" font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
+                WHO BENEFITS?
+              </span>
+            </h2>
 
-          {/* Subtitle (optional) */}
-          <p className="mt-2 text-center text-[13px] md:text-sm text-gray-800 dark:text-blue-100/80">
-            users submit claims, others stake tokens to vote on their accuracy,
-            and vertify anchors the final verified results on-chain
-          </p>
+            <p className="mt-3 text-center text-[10px] md:text-[13px] text-gray-800/75 dark:text-blue-100/80 max-w-xl mx-auto ">
+              users submit claims, others stake tokens to vote on their
+              accuracy, and vertify anchors the final verified results on-chain
+            </p>
+          </FadeInWhenVisible>
 
           {/* Decorative backplate behind cards */}
           <div
-            className="
-        pointer-events-none absolute left-1/2 top-20 -z-0
-        h-40 w-[92%] -translate-x-1/2 rounded-3xl
-        dark:bg-[#102a58]/80 ring-1 ring-white/5 bg-[#DBE7FE]
-      "
+            className=" mt-5
+              pointer-events-none absolute left-1/2 top-20 -z-0
+              h-40 w-[92%] -translate-x-1/2 rounded-3xl
+              dark:bg-[#102a58]/80 ring-1 ring-white/5 bg-[#DBE7FE]
+            "
           />
 
           {/* Cards */}
-          <div className="relative z-10 mt-12 grid gap-6 md:grid-cols-3">
-            {/* Posters */}
-            <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20 ">
-              <div className="mb-4 overflow-hidden rounded-xl">
-                <img
-                  src="/benefits1.webp" /* replace with your asset */
-                  alt=""
-                  className="w-full h-36 object-contain"
-                />
-              </div>
-              <span className="inline-block rounded-full bg-blue-600/10 px-3 py-1 text-xs font-semibold text-blue-600">
-                Posters
-              </span>
-              <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
-                they use Vertify to submit verified articles, anchor their
-                claims on-chain, share proof pages with verification badges, and
-                build their reputation for accuracy.
-              </p>
-            </div>
+          <StaggerInView once={false} delay={0.05}>
+            <div className="relative z-10 mt-12 grid gap-6 md:grid-cols-3">
+              {/* Posters */}
+              <StaggerItem>
+                <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20 ">
+                  <div className="mb-4 overflow-hidden rounded-xl">
+                    <img
+                      src="/benefits1.webp"
+                      alt=""
+                      className="w-full h-36 object-contain"
+                    />
+                  </div>
+                  <span className="inline-block rounded-full bg-blue-600/10 px-3 py-1 text-xs font-semibold text-blue-600">
+                    Posters
+                  </span>
+                  <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
+                    they use Vertify to submit verified articles, anchor their
+                    claims on-chain, share proof pages with verification badges,
+                    and build their reputation for accuracy.
+                  </p>
+                </div>
+              </StaggerItem>
 
-            {/* Voters / Fact-checkers */}
-            <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20">
-              <div className="mb-4 overflow-hidden rounded-xl">
-                <img
-                  src="/benefits2.webp" /* replace with your asset */
-                  alt=""
-                  className="w-full h-36 object-contain"
-                />
-              </div>
-              <span className="inline-block rounded-full bg-blue-600/10 px-3 py-1 text-xs font-semibold text-blue-600">
-                Voters / Fact-checkers
-              </span>
-              <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
-                they carefully review claims, stake tokens to vote, earn rewards
-                for accuracy, and build their credibility in the process.
-              </p>
-            </div>
+              {/* Voters / Fact-checkers */}
+              <StaggerItem>
+                <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20">
+                  <div className="mb-4 overflow-hidden rounded-xl">
+                    <img
+                      src="/benefits2.webp"
+                      alt=""
+                      className="w-full h-36 object-contain"
+                    />
+                  </div>
+                  <span className="inline-block rounded-full bg-blue-600/10 px-3 py-1 text-xs font-semibold text-blue-600">
+                    Voters / Fact-checkers
+                  </span>
+                  <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
+                    they carefully review claims, stake tokens to vote, earn
+                    rewards for accuracy, and build their credibility in the
+                    process.
+                  </p>
+                </div>
+              </StaggerItem>
 
-            {/* Public */}
-            <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20">
-              <div className="mb-4 overflow-hidden rounded-xl">
-                <img
-                  src="/benefits3.webp" /* replace with your asset */
-                  alt=""
-                  className="w-full h-36 object-contain"
-                />
-              </div>
-              <span className="inline-block rounded-full bg-blue-600/10 px-3 py-1 text-xs font-semibold text-blue-600">
-                Public
-              </span>
-              <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
-                they can freely browse claims without a wallet, explore
-                AI-generated verdicts, check proof pages, and verify data
-                securely on-chain.
-              </p>
+              {/* Public */}
+              <StaggerItem>
+                <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20">
+                  <div className="mb-4 overflow-hidden rounded-xl">
+                    <img
+                      src="/benefits3.webp"
+                      alt=""
+                      className="w-full h-36 object-contain"
+                    />
+                  </div>
+                  <span className="inline-block rounded-full bg-blue-600/10 px-3 py-1 text-xs font-semibold text-blue-600">
+                    Public
+                  </span>
+                  <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
+                    they can freely browse claims without a wallet, explore
+                    AI-generated verdicts, check proof pages, and verify data
+                    securely on-chain.
+                  </p>
+                </div>
+              </StaggerItem>
             </div>
-          </div>
+          </StaggerInView>
         </div>
       </section>
 
+      {/* ==================== WHY IT MATTERS ==================== */}
       <section id="why" className="dark:bg-[#0e2346] py-16 text-white">
         <div className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center gap-6 mb-6">
-            <h2 className="text-2xl font-semibold tracking-wide">
-              <span className=" font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
-                WHY IT MATTERS
-              </span>
-            </h2>
-            <div className="h-px flex-1 dark:bg-white/60 bg-gray-500 rounded-full" />
-          </div>
+          <FadeInWhenVisible once={false}>
+            <div className="flex items-center gap-6 mb-6">
+              <h2 className="text-2xl font-semibold tracking-wide">
+                <span className=" font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
+                  WHY IT MATTERS
+                </span>
+              </h2>
+              <div className="h-px flex-1 dark:bg-white/60 bg-gray-500 rounded-full" />
+            </div>
+          </FadeInWhenVisible>
 
-          {/* ✅ No white board wrapper */}
-          <div className="grid gap-6 md:grid-cols-3">
-            <Card className="bg-green-50/20 border border-emerald-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center rounded-2xl bg-green-300/10 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/20">
-                <div className="flex flex-col justify-center items-center">
-                  <img
-                    src="/Accuracy.webp"
-                    alt=""
-                    className="w-12 mb-2 py-2 dark:hidden"
-                  />{" "}
-                  <img
-                    src="/AccuracyW.webp"
-                    alt=""
-                    className="w-12 mb-2 py-2 hidden dark:block"
-                  />
-                  <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white ">
-                    Accuracy Pays
-                  </h3>
-                  <p className="text-md text-gray-600 dark:text-gray-400">
-                    Correct voters and reliable posters earn rewards
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+          <StaggerInView once={false}>
+            <div className="grid gap-6 md:grid-cols-3">
+              <StaggerItem>
+                <Card className="bg-green-50/20 border border-emerald-300/30 backdrop-blur-sm">
+                  <CardContent className="pt-6 text-center rounded-2xl bg-green-300/10 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/20">
+                    <div className="flex flex-col justify-center items-center">
+                      <img
+                        src="/Accuracy.webp"
+                        alt=""
+                        className="w-12 mb-2 py-2 dark:hidden"
+                      />
+                      <img
+                        src="/AccuracyW.webp"
+                        alt=""
+                        className="w-12 mb-2 py-2 hidden dark:block"
+                      />
+                      <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white ">
+                        Accuracy Pays
+                      </h3>
+                      <p className="text-md text-gray-600 dark:text-gray-400">
+                        Correct voters and reliable posters earn rewards
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </StaggerItem>
 
-            <Card className="bg-blue-50/20 border border-blue-300/50 backdrop-blur-sm ">
-              <CardContent className="pt-6 text-center rounded-2xl bg-blue-200/20 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/10">
-                <div className="flex flex-col justify-center items-center ">
-                  <img
-                    src="/NFTW.webp"
-                    alt=""
-                    className="w-12 mb-2 py-2 dark:hidden"
-                  />{" "}
-                  <img
-                    src="/NFT.webp"
-                    alt=""
-                    className="w-12 mb-2 py-2 hidden dark:block"
-                  />
-                  <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white">
-                    Proof, Not Promises
-                  </h3>
-                  <p className="text-md text-gray-600 dark:text-gray-400 ">
-                    Outcomes and hashes are anchored on-chain
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+              <StaggerItem>
+                <Card className="bg-blue-50/20 border border-blue-300/50 backdrop-blur-sm ">
+                  <CardContent className="pt-6 text-center rounded-2xl bg-blue-200/20 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/10">
+                    <div className="flex flex-col justify-center items-center ">
+                      <img
+                        src="/NFTW.webp"
+                        alt=""
+                        className="w-12 mb-2 py-2 dark:hidden"
+                      />
+                      <img
+                        src="/NFT.webp"
+                        alt=""
+                        className="w-12 mb-2 py-2 hidden dark:block"
+                      />
+                      <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white">
+                        Proof, Not Promises
+                      </h3>
+                      <p className="text-md text-gray-600 dark:text-gray-400 ">
+                        Outcomes and hashes are anchored on-chain
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </StaggerItem>
 
-            <Card className="bg-fuchsia-50/20 border border-fuchsia-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center rounded-2xl bg-purple-300/10 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/20">
-                <div className="flex flex-col justify-center items-center">
-                  <img
-                    src="/low.webp"
-                    alt=""
-                    className="w-12 mb-2 py-2 dark:hidden"
-                  />{" "}
-                  <img
-                    src="/lowW.webp"
-                    alt=""
-                    className="w-12 mb-2 py-2 hidden dark:block"
-                  />
-                  <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white">
-                    Low Cost, High Trust
-                  </h3>
-                  <p className="text-md text-gray-600 dark:text-gray-400">
-                    Base L2 keeps anchoring cent-level per claim
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              <StaggerItem>
+                <Card className="bg-fuchsia-50/20 border border-fuchsia-300/30 backdrop-blur-sm">
+                  <CardContent className="pt-6 text-center rounded-2xl bg-purple-300/10 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/20">
+                    <div className="flex flex-col justify-center items-center">
+                      <img
+                        src="/low.webp"
+                        alt=""
+                        className="w-12 mb-2 py-2 dark:hidden"
+                      />
+                      <img
+                        src="/lowW.webp"
+                        alt=""
+                        className="w-12 mb-2 py-2 hidden dark:block"
+                      />
+                      <h3 className="text-xl py-2 font-semibold mb-2 dark:text-white">
+                        Low Cost, High Trust
+                      </h3>
+                      <p className="text-md text-gray-600 dark:text-gray-400">
+                        Base L2 keeps anchoring cent-level per claim
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </StaggerItem>
+            </div>
+          </StaggerInView>
         </div>
       </section>
 
-      {/* READY TO JOIN */}
+      {/* ===================== READY TO JOIN ==================== */}
       <section id="join" className="dark:bg-[#0e2346] py-16 text-white">
         <div className="mx-auto max-w-7xl px-4">
-          <h2 className="text-center text-2xl font-semibold tracking-wide">
-            <span className="font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
-              READY TO JOIN?
-            </span>
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-800 dark:text-blue-100/80">
-            join the fight against misinformation and earn rewards for accuracy
-          </p>
+          <FadeInWhenVisible once={false}>
+            <h2 className="text-center text-2xl font-semibold tracking-wide">
+              <span className="font-medium bg-gradient-to-r from-[#5EC7F3] to-[#3B28DA] dark:bg-gradient-to-r dark:from-cyan-300 dark:to-blue-400 bg-clip-text text-transparent">
+                READY TO JOIN?
+              </span>
+            </h2>
+            <p className="mt-2 text-center text-sm text-gray-800 dark:text-blue-100/80">
+              join the fight against misinformation and earn rewards for
+              accuracy
+            </p>
+          </FadeInWhenVisible>
 
-          <div className="mt-8 grid gap-6 md:grid-cols-2">
-            {/* Explore Claims */}
-            <div className="relative overflow-hidden rounded-xl bg-gray-200 dark:bg-white/10 ring-1 ring-white/10">
-              <div className="p-6 md:p-8">
-                <h3 className="text-2xl font-medium text-gray-700 dark:text-white/90">
-                  Explore Claims
-                </h3>
-                <p className="mt-2 max-w-md text-sm text-gray-600 dark:text-blue-100/80">
-                  Explore ongoing fact-checks, uncover verified results, and
-                  witness transparency in action.
-                </p>
-                <Link href="/explore">
-                  <Button
-                    className="group inline-flex items-center gap-2 rounded-lg mt-10
-                              bg-white text-[#0A65CC]
-                              shadow-sm ring-1 ring-black/5 transition will-change-transform
+          <StaggerInView once={false}>
+            <div className="mt-8 grid gap-6 md:grid-cols-2">
+              {/* Explore Claims */}
+              <StaggerItem>
+                <div className="relative overflow-hidden rounded-xl bg-gray-200 dark:bg:white/10 ring-1 ring-white/10">
+                  <div className="p-6 md:p-8">
+                    <h3 className="text-2xl font-medium text-gray-700 dark:text-gray-700/90">
+                      Explore Claims
+                    </h3>
+                    <p className="mt-2 max-w-md text-sm text-gray-600 dark:text-gray-700/90">
+                      Explore ongoing fact-checks, uncover verified results, and
+                      witness transparency in action.
+                    </p>
+                    <Link href="/explore">
+                      <Button
+                        className="group inline-flex items-center gap-2 rounded-lg mt-10
+                                  bg-white text-[#0A65CC]
+                                  shadow-sm ring-1 ring-black/5 transition will-change-transform
+                                  hover:shadow-lg
+                                  active:translate-y-0 active:shadow-sm active:opacity-90
+                                  focus-visible:outline-none
+                                  focus-visible:ring-2 focus-visible:ring-blue-400/60
+                                  focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#1A2745]
+                                  disabled:opacity-50 disabled:pointer-events-none
+                                  motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                      >
+                        Explore
+                        <span className="ml-2">→</span>
+                      </Button>
+                    </Link>
+                  </div>
+                  <img
+                    src="/box.webp"
+                    alt=""
+                    className="pointer-events-none select-none absolute right-0 -bottom-2 h-28 md:h-52 w-auto rounded-lg object-contain"
+                  />
+                </div>
+              </StaggerItem>
 
-                              hover:shadow-lg
-                              active:translate-y-0 active:shadow-sm active:opacity-90
-
-                              focus-visible:outline-none
-                              focus-visible:ring-2 focus-visible:ring-blue-400/60
-                              focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#1A2745]
-
-                              disabled:opacity-50 disabled:pointer-events-none
-                              motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-                  >
-                    Explore
-                    <span className="ml-2">→</span>
-                  </Button>
-                </Link>
-              </div>
-              {/* image on right */}
-              <img
-                src="/box.webp" /* put this in /public (or change the path) */
-                alt=""
-                className="pointer-events-none select-none absolute right-0 -bottom-2 h-28 md:h-52 w-auto rounded-lg object-contain"
-              />
+              {/* Submit Your Claim */}
+              <StaggerItem>
+                <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#0e76ff] to-[#2a52ff] ring-1 ring-white/10">
+                  <div className="p-6 md:p-8">
+                    <h3 className="text-2xl font-medium">Submit Your Claim</h3>
+                    <p className="mt-2 max-w-sm text-sm text-white/90">
+                      Submit your claim, share credible sources, and help create
+                      a trustworthy space where accuracy is rewarded.
+                    </p>
+                    <Link href="/submit">
+                      <Button
+                        className="group inline-flex items-center gap-2 rounded-lg mt-5
+                                  bg-white text-[#0A65CC]
+                                  shadow-sm ring-1 ring-black/5 transition will-change-transform
+                                  hover:shadow-lg
+                                  active:translate-y-0 active:shadow-sm active:opacity-90
+                                  focus-visible:outline-none
+                                  focus-visible:ring-2 focus-visible:ring-blue-400/60
+                                  focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#1A2745]
+                                  disabled:opacity-50 disabled:pointer-events-none
+                                  motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                      >
+                        Submit
+                        <span className="ml-2">→</span>
+                      </Button>
+                    </Link>
+                  </div>
+                  <img
+                    src="/vote.webp"
+                    alt=""
+                    className="pointer-events-none select-none absolute right-0 -bottom-2 h-28 md:h-52 w-auto rounded-lg object-contain"
+                  />
+                </div>
+              </StaggerItem>
             </div>
-
-            {/* Submit Your Claim */}
-            <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#0e76ff] to-[#2a52ff] ring-1 ring-white/10">
-              <div className="p-6 md:p-8">
-                <h3 className="text-2xl font-medium">Submit Your Claim</h3>
-                <p className="mt-2 max-w-sm text-sm text-white/90">
-                  Submit your claim, share credible sources, and help create a
-                  trustworthy space where accuracy is rewarded.
-                </p>
-                <Link href="/submit">
-                  <Button
-                    className="group inline-flex items-center gap-2 rounded-lg mt-5
-                              bg-white text-[#0A65CC]
-                              shadow-sm ring-1 ring-black/5 transition will-change-transform
-
-                              hover:shadow-lg
-                              active:translate-y-0 active:shadow-sm active:opacity-90
-
-                              focus-visible:outline-none
-                              focus-visible:ring-2 focus-visible:ring-blue-400/60
-                              focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#1A2745]
-
-                              disabled:opacity-50 disabled:pointer-events-none
-                              motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-                  >
-                    Submit
-                    <span className="ml-2">→</span>
-                  </Button>
-                </Link>
-              </div>
-              {/* image on right */}
-              <img
-                src="/vote.webp" /* put this in /public (or change the path) */
-                alt=""
-                className="pointer-events-none select-none absolute right-0 -bottom-2 h-28 md:h-52 w-auto rounded-lg object-contain"
-              />
-            </div>
-          </div>
+          </StaggerInView>
         </div>
       </section>
 
-      {/* Footer with dark mode toggle */}
+      {/* ========================= FOOTER ======================= */}
       <footer className="mt-16 bg-gray-50 text-gray-700 dark:bg-[#0f2039] dark:text-gray-300">
         <div className="mx-auto max-w-7xl px-6 py-14">
           <div className="grid grid-cols-1 gap-10 md:grid-cols-12 md:items-start">
@@ -592,8 +635,7 @@ export default function HomePage() {
               © {new Date().getFullYear()} Verity. All rights reserved.
             </p>
             <div className="flex items-center gap-5">
-              {/* Dark mode switch lives here 
-              <ThemeToggle />*/}
+              {/* <ThemeToggle /> */}
               <a
                 href="#"
                 aria-label="LinkedIn"

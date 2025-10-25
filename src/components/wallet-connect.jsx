@@ -37,8 +37,7 @@ export function WalletConnect() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
-            className="gap-2 border-gray-300 text-gray-800 dark:border-gray-700 dark:text-gray-100 dark:bg-gray-900"
+            className="gap-2 bg-[#3563E9] text-white  dark:border-gray-700 dark:text-gray-100 dark:bg-gray-900 hover:shadow-lg"
           >
             {formatAddress(address)}
           </Button>
@@ -63,7 +62,7 @@ export function WalletConnect() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="gap-2 bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500">
+        <Button className="gap-2 bg-[#3563E9] text-white hover:bg-blue-700 dark:bg-[#3563E9] dark:hover:bg-blue-500">
           Connect Wallet
         </Button>
       </DropdownMenuTrigger>

@@ -59,7 +59,7 @@
     "embla-carousel-react": "^8.6.0",
     "ethers": "^6.15.0",
     "express": "5.1.0",
-    "framer-motion": "^12.12.1",
+    "framer-motion": "^12.23.24",
     "hardhat-deploy": "1.0.4",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "9.0.2",

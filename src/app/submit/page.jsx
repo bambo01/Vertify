@@ -449,7 +449,7 @@ export default function SubmitPage() {
                   </>
                 )}
 
-                <Card className="bg-blue-50 border-blue-200">
+                <Card className="bg-[#44ADFF]/10 border-blue-200">
                   <CardContent className="pt-4">
                     <p className="text-sm font-semibold text-gray-700 mb-2 dark:text-white">
                       What happens next:
@@ -471,7 +471,7 @@ export default function SubmitPage() {
 
                 <Button
                   type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  className="w-full bg-[#008FFF] hover:bg-[#3563E9] "
                   disabled={
                     isSubmitting ||
                     !hasCategories ||

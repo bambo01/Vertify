@@ -376,7 +376,7 @@ export function ClaimCard({ claim }) {
 
         {status === 'voting' && !hasVoted && (
           <Link href={`/vote/${claimId ?? ''}`} className="flex-1">
-            <Button className="w-full bg-blue-600 hover:bg-blue-700">
+            <Button className="w-full" variant="outline">
               Vote Now
             </Button>
           </Link>

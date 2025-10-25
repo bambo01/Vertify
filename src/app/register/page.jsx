@@ -582,10 +582,10 @@ export default function RegisterPage() {
         <div className="mb-6 sm:mb-8 overflow-x-auto pb-2">
           <div className="flex justify-center items-center gap-2 sm:gap-4 min-w-max">
             <div
-              className={`flex items-center gap-2 ${step >= 1 ? "text-[#44ADFF]" : "text-gray-400"}`}
+              className={`flex items-center gap-2 ${step >= 1 ? "text-[#008FFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${step >= 1 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 1 ? "bg-[#008FFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 {step > 1 ? (
                   <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -599,10 +599,10 @@ export default function RegisterPage() {
             </div>
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
-              className={`flex items-center gap-2 ${step >= 2 ? "text-[#44ADFF]" : "text-gray-400"}`}
+              className={`flex items-center gap-2 ${step >= 2 ? "text-[#008FFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${step >= 2 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 2 ? "bg-[#008FFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 {step > 2 ? (
                   <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -616,10 +616,10 @@ export default function RegisterPage() {
             </div>
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
-              className={`flex items-center gap-2 ${step >= 3 ? "text-[#44ADFF]" : "text-gray-400"}`}
+              className={`flex items-center gap-2 ${step >= 3 ? "text-[#008FFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${step >= 3 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 3 ? "bg-[#008FFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 {step > 3 ? (
                   <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -633,10 +633,10 @@ export default function RegisterPage() {
             </div>
             <div className="h-px w-8 sm:w-16 bg-gray-300" />
             <div
-              className={`flex items-center gap-2 ${step >= 4 ? "text-[#44ADFF]" : "text-gray-400"}`}
+              className={`flex items-center gap-2 ${step >= 4 ? "text-[#008FFF]" : "text-gray-400"}`}
             >
               <div
-                className={`rounded-full p-1.5 sm:p-2 ${step >= 4 ? "bg-[#44ADFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
+                className={`rounded-full p-1.5 sm:p-2 ${step >= 4 ? "bg-[#008FFF] text-white" : "dark:bg-gray-800 border border-gray-400"}`}
               >
                 <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
@@ -694,7 +694,7 @@ export default function RegisterPage() {
                     claims
                   </p>
                 </div>
-                <Card className="bg-blue-50 border-blue-200 dark:border-gray-600">
+                <Card className="bg-[#44ADFF]/10 border-blue-200 dark:border-gray-600">
                   <CardContent className="pt-4">
                     <h3 className="font-semibold mb-2 text-sm sm:text-base dark:text-white">
                       How TruthChain Works:
@@ -743,7 +743,7 @@ export default function RegisterPage() {
                       <div className="grid sm:grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <Label htmlFor="studentLast4">
-                            Student ID (Last 4 Digits)
+                            Student ID
                           </Label>
                           <Input
                             id="studentLast4"
@@ -809,7 +809,7 @@ export default function RegisterPage() {
                 {/* student_plus → LinkedIn only for other roles */}
                 {mode === "student_plus" &&
                   otherBlockMode === "linkedin_only" && (
-                    <Card className="bg-blue-50 border-blue-200">
+                    <Card className="bg-[#44ADFF]/10 border-blue-200">
                       <CardContent className="pt-4 space-y-3">
                         <div className="flex items-center gap-2">
                           <ExternalLink className="h-5 w-5 text-blue-600" />
@@ -1147,14 +1147,14 @@ export default function RegisterPage() {
               {step > 1 && (
                 <Button
                   onClick={() => setStep(step - 1)}
-                  className="w-full sm:flex-1 order-2 sm:order-1 bg-[#3e3e42]"
+                  className="w-full sm:flex-1 order-2 sm:order-1 bg-white text-black border hover:text-white hover:bg-[#3e3e42] dark:bg-[#1e1e1e] dark:text-white dark:border-gray-50/30"
                 >
                   Back
                 </Button>
               )}
               <Button
                 onClick={handleNext}
-                className="w-full sm:flex-1 bg-[#227DC3] hover:bg-blue-700 order-1 sm:order-2"
+                className="w-full sm:flex-1 bg-[#008FFF] hover:bg-[#3563E9] order-1 sm:order-2"
                 disabled={
                   (step === 1 && !displayName.trim()) ||
                   (step === 2 &&
