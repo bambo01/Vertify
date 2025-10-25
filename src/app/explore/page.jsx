@@ -39,7 +39,7 @@ export default function ExplorePage() {
 
   const votingClaims = filterClaims(['voting']);
   const endedClaims = filterClaims(['ended', 'verified', 'flagged']);
-
+  console.log('Ended claims: ', endedClaims);
   const getCategoryCount = (category) => {
     if (category === 'all') return claims.length;
     return claims.filter((claim) => claim.category === category).length;
@@ -81,7 +81,7 @@ export default function ExplorePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
-              variant={selectedCategory === 'all' ? 'default' : 'outline'}
+              variant={selectedCategory === 'all' ? 'exploreAll' : 'outline'}
               size="sm"
               onClick={() => setSelectedCategory('all')}
               className="gap-1"

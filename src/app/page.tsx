@@ -123,7 +123,7 @@ export default function HomePage() {
             <Link href="/explore">
               <Button
                 size="lg"
-                className="bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-80"
+                className="text-white bg-gradient-to-r from-[#44ADFF] to-[#227DC3] hover:opacity-90 hover:shadow-md"
               >
                 Explore Claims
               </Button>
@@ -131,7 +131,7 @@ export default function HomePage() {
             <Link href="/submit">
               <Button
                 size="lg"
-                className="bg-white text-black border border-gray-200"
+                className="bg-white text-black border border-gray-200 hover:text-[#227DC3] hover:shadow-md dark:bg-[#1A2745] dark:text-white dark:hover:bg-white dark:hover:text-[#1A2745]"
               >
                 Submit Claim
               </Button>
@@ -243,7 +243,7 @@ export default function HomePage() {
           {/* Cards */}
           <div className="relative z-10 mt-12 grid gap-6 md:grid-cols-3">
             {/* Posters */}
-            <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20">
+            <div className="rounded-2xl bg-white p-5 text-[#0e2346] shadow-xl shadow-black/20 ">
               <div className="mb-4 overflow-hidden rounded-xl">
                 <img
                   src="/benefits1.webp" /* replace with your asset */
@@ -315,7 +315,7 @@ export default function HomePage() {
           {/* ✅ No white board wrapper */}
           <div className="grid gap-6 md:grid-cols-3">
             <Card className="bg-green-50/20 border border-emerald-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center rounded-2xl bg-green-300/10 dark:bg-[#1A2745] p-5 text-[#0e2346] shadow-xl shadow-black/20">
+              <CardContent className="pt-6 text-center rounded-2xl bg-green-300/10 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/20">
                 <div className="flex flex-col justify-center items-center">
                   <img
                     src="/Accuracy.webp"
@@ -338,7 +338,7 @@ export default function HomePage() {
             </Card>
 
             <Card className="bg-blue-50/20 border border-blue-300/50 backdrop-blur-sm ">
-              <CardContent className="pt-6 text-center rounded-2xl bg-blue-200/20 dark:bg-[#1A2745] p-5 text-[#0e2346] shadow-xl shadow-black/10">
+              <CardContent className="pt-6 text-center rounded-2xl bg-blue-200/20 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/10">
                 <div className="flex flex-col justify-center items-center ">
                   <img
                     src="/NFTW.webp"
@@ -361,7 +361,7 @@ export default function HomePage() {
             </Card>
 
             <Card className="bg-fuchsia-50/20 border border-fuchsia-300/30 backdrop-blur-sm">
-              <CardContent className="pt-6 text-center rounded-2xl bg-purple-300/10 dark:bg-[#1A2745] p-5 text-[#0e2346] shadow-xl shadow-black/20">
+              <CardContent className="pt-6 text-center rounded-2xl bg-purple-300/10 dark:bg-[#132a54] p-5 text-[#0e2346] shadow-xl shadow-black/20">
                 <div className="flex flex-col justify-center items-center">
                   <img
                     src="/low.webp"
@@ -411,8 +411,19 @@ export default function HomePage() {
                 </p>
                 <Link href="/explore">
                   <Button
-                    variant="secondary"
-                    className="mt-5 bg-white text-[#0b2a55] hover:bg-white/90"
+                    className="group inline-flex items-center gap-2 rounded-lg mt-10
+                              bg-white text-[#0A65CC]
+                              shadow-sm ring-1 ring-black/5 transition will-change-transform
+
+                              hover:shadow-lg
+                              active:translate-y-0 active:shadow-sm active:opacity-90
+
+                              focus-visible:outline-none
+                              focus-visible:ring-2 focus-visible:ring-blue-400/60
+                              focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#1A2745]
+
+                              disabled:opacity-50 disabled:pointer-events-none
+                              motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                   >
                     Explore
                     <span className="ml-2">→</span>
@@ -436,7 +447,21 @@ export default function HomePage() {
                   trustworthy space where accuracy is rewarded.
                 </p>
                 <Link href="/submit">
-                  <Button className="mt-5 bg-white text-[#0b2a55] hover:bg-white/90">
+                  <Button
+                    className="group inline-flex items-center gap-2 rounded-lg mt-5
+                              bg-white text-[#0A65CC]
+                              shadow-sm ring-1 ring-black/5 transition will-change-transform
+
+                              hover:shadow-lg
+                              active:translate-y-0 active:shadow-sm active:opacity-90
+
+                              focus-visible:outline-none
+                              focus-visible:ring-2 focus-visible:ring-blue-400/60
+                              focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#1A2745]
+
+                              disabled:opacity-50 disabled:pointer-events-none
+                              motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                  >
                     Submit
                     <span className="ml-2">→</span>
                   </Button>
@@ -460,15 +485,7 @@ export default function HomePage() {
             {/* Brand */}
             <div className="md:col-span-3">
               <Link href="/" className="inline-flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="h-9 w-9 rounded-full bg-blue-600 inline-flex items-center justify-center"
-                >
-                  <span className="h-4 w-2 bg-white rounded-l-sm" />
-                </span>
-                <span className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                  Vertify
-                </span>
+                <img src="/logo.webp" alt="Vertify" className="w-40" />
                 <span className="text-blue-600 dark:text-blue-400 align-super text-xs">
                   ®
                 </span>

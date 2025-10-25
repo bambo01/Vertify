@@ -500,7 +500,9 @@ export default function DashboardPage() {
         </Card>
 
         {/* Claimable categories */}
-        <Card className="mb-8">
+        {
+          claimableCategories.length > 0 && (
+            <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 dark:text-white">
               <ShieldCheck className="h-6 w-6 text-emerald-500" />
@@ -568,6 +570,8 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+          )
+        }
 
         {/* Claims / Votes tabs */}
         <Tabs defaultValue="claims" className="w-full">

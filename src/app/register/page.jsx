@@ -1126,16 +1126,15 @@ export default function RegisterPage() {
                     <div className="text-xs sm:text-sm text-gray-700 space-y-2 dark:text-gray-400">
                       <p>
                         <strong>Silver Badge (Starting):</strong> unlocked after
-                        admin approval + claim. Max 0.002 ETH per vote, 1.0x
-                        weight
+                        admin approval 
                       </p>
                       <p>
                         <strong>Gold Badge:</strong> 75% accuracy + 20 votes.
-                        Max 0.005 ETH, 1.3x weight
+                       
                       </p>
                       <p>
                         <strong>Expert Badge:</strong> 85% accuracy + 100 votes.
-                        Max 0.01 ETH, 1.6x weight
+                       
                       </p>
                     </div>
                   </CardContent>

@@ -53,7 +53,7 @@ export function ClaimCard({ claim }) {
   const title      = String(claim?.title ?? '');
   const summary    = String(claim?.summary ?? '');
   const aiVerdict  = claim?.aiVerdict;
-  const resolution = claim?.resolution;
+  const resolution = claim?.aiVerification;
 
   // Safe claim id for links + lookups
   const claimId = useMemo(() => claim?.id ?? claim?.claimId ?? null, [claim]);
@@ -263,6 +263,14 @@ export function ClaimCard({ claim }) {
     return <div className="h-64 animate-pulse bg-gray-100 rounded-lg" />;
   }
 
+  const resolutionColor =
+  normPos(resolution?.result) === 'truth'
+    ? 'text-green-600'
+    : normPos(resolution?.result) === 'fake'
+    ? 'text-red-600'
+    : 'text-gray-600';
+
+
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader>
@@ -344,13 +352,15 @@ export function ClaimCard({ claim }) {
 
         {resolution && (
           <div className="p-3 bg-green-50 rounded-lg border border-green-200 dark:bg-[#252526] dark:border-gray-50/10">
-            <div className="text-sm font-semibold text-green-600 mb-1">
-              Resolution: {resolution?.outcome ?? '—'}
-            </div>
+            <div className={`text-sm font-semibold mb-1 flex gap-2`}>
+                Resolution: 
+                <h1 className={`${resolutionColor}`}>{resolution.result ?? '—'}</h1>
+              </div>
+
             <div className="text-xs text-gray-700 dark:text-gray-400">
               Weighted Score:{' '}
-              {Number.isFinite(resolution?.weightedTruthScore)
-                ? (resolution.weightedTruthScore * 100).toFixed(1) + '%'
+              {Number.isFinite(resolution?.finalScore)
+                ? (resolution?.finalScore) + '%'
                 : '—'}
             </div>
           </div>

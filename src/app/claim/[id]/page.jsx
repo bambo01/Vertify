@@ -39,7 +39,7 @@ import { finalizeVoting } from '@/lib/finalize';
 const SERVER_BASE = 'https://verity.up.railway.app';
 
 async function postServerVerification(claimId, payload) {
-  // 🔎 Log exactly what we're sending to the BE
+  
   console.log('[AI VERIFY] outgoing payload:', { claimId, ...payload });
 
   const res = await fetch(
@@ -55,7 +55,7 @@ async function postServerVerification(claimId, payload) {
     const txt = await res.text().catch(() => '');
     throw new Error(`Verify API failed (${res.status}): ${txt}`);
   }
-  return res.json(); // expect { aiVerification } or { updatedClaim }
+  return res.json(); 
 }
 
 /* ------------------------- helpers -------------------------------------- */
@@ -134,6 +134,7 @@ export default function ClaimDetailPage() {
   const { address } = useAccount();
 
   const [claim, setClaim] = useState(null);
+  const [displayName, setDisplayName] = useState(null);
 
   // Local/fallback votes
   const [votes, setVotes] = useState([]);
@@ -158,7 +159,11 @@ export default function ClaimDetailPage() {
     const loadClaim = async () => {
       const claimId = params.id;
       const loadedClaim = await storage.getClaim(claimId);
+   
       if (loadedClaim) {
+        const loadedUser = await storage.getUserProfile(loadedClaim.poster);
+        console.log('Poster Id: ', loadedUser.displayName);
+        setDisplayName(loadedUser.displayName);
         setClaim(loadedClaim);
         const claimVotes = await storage.getVotesForClaim(claimId);
         setVotes(claimVotes);
@@ -632,7 +637,7 @@ export default function ClaimDetailPage() {
             <p className="text-gray-700 text-lg mb-4 dark:text-white">{claim.summary}</p>
 
             <div className="flex items-center gap-4 text-sm text-gray-600">
-              <span className="dark:text-white">By: {claim.displayName}</span>
+              <span className="dark:text-white">By: {displayName}</span>
               <span>•</span>
               <span className="dark:text-white">
                 {claim.createdAt ? new Date(claim.createdAt).toLocaleDateString() : ''}
@@ -1006,7 +1011,7 @@ export default function ClaimDetailPage() {
             )}
 
             {verifying && (
-              <Alert className="bg-blue-50 border-blue-200 dark:bg-[#252526]">
+              <Alert className="bg-blue-50 border-blue-200 dark:bg-[#252526] flex gap-2">
                 <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-white" />
                 <AlertDescription className="text-blue-800 dark:text-gray-400">
                   AI is analyzing this claim with sources and calculating weighted resolution...
