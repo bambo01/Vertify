@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { parseEther } from 'viem';
+
 import { WalletRequired } from '@/components/wallet-connect';
 import { EvidenceInput } from '@/components/evidence-input';
 import { BadgeDisplay } from '@/components/badge-display';
@@ -12,10 +14,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
 import { storage } from '@/lib/storage';
 import { calculateEvidenceQualityScore } from '@/lib/resolution';
 import { checkVoterEligibility } from '@/lib/eligibility';
 import { BADGE_REQUIREMENTS } from '@/lib/constants';
+
 import {
   CheckCircle,
   XCircle,
@@ -25,123 +29,96 @@ import {
   Shield,
   Lock,
 } from 'lucide-react';
+
+import TruthChainCore from '../../../../artifacts/contracts/TruthChainCore.sol/TruthChainCore.json';
 import { toast } from 'sonner';
+
+const TRUTH_CHAIN_ADDR =
+  process.env.NEXT_PUBLIC_TRUTHCHAIN_CORE_ADDRESS ??
+  '0x0000000000000000000000000000000000000000';
 
 export default function VotePage() {
   const params = useParams();
   const router = useRouter();
   const { address } = useAccount();
 
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+
   const [claim, setClaim] = useState(null);
   const [profile, setProfile] = useState(null);
   const [categoryBadge, setCategoryBadge] = useState(null);
   const [eligibility, setEligibility] = useState(null);
-  const [voteType, setVoteType] = useState(null);
+  const [voteType, setVoteType] = useState(null); // 'truth' | 'fake'
   const [stakeAmount, setStakeAmount] = useState('0.001');
   const [evidence, setEvidence] = useState([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
-  // ---- AI Verdict Weights -----------------------------------------------------
-  const VERDICT_WEIGHTS = {
-    ai: 0.35,        // AI Verification (A)
-    evidence: 0.25,  // Evidence Credibility (E)
-    userCred: 0.20,  // User Credibility Badge (V)
-    source: 0.20,    // Source Reliability (S)
-  };
-
+  const VERDICT_WEIGHTS = { ai: 0.35, evidence: 0.25, userCred: 0.2, source: 0.2 };
   const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
-  // Source Reliability (S) ∈ [0..1]
   const getSourceReliabilityScore = (urls) => {
     if (!Array.isArray(urls) || urls.length === 0) return 0;
     let total = 0;
     for (const raw of urls) {
       try {
         const host = new URL(raw).hostname.toLowerCase();
-
         if (host.endsWith('.gov') || host.endsWith('.edu')) { total += 0.95; continue; }
-
-        if (/(nature|science|reuters|apnews|bbc|nytimes|theguardian|washingtonpost)\./.test(host)) {
-          total += 0.85; continue;
-        }
-
-        if (/(forbes|bloomberg|wsj|ft|npr|mit|harvard|stanford|who|un|oecd|imf)\./.test(host)) {
-          total += 0.75; continue;
-        }
-
+        if (/(nature|science|reuters|apnews|bbc|nytimes|theguardian|washingtonpost)\./.test(host)) { total += 0.85; continue; }
+        if (/(forbes|bloomberg|wsj|ft|npr|mit|harvard|stanford|who|un|oecd|imf)\./.test(host)) { total += 0.75; continue; }
         if (/(medium|substack|blogspot|wordpress)\./.test(host)) { total += 0.55; continue; }
-
-        if (/(facebook|instagram|tiktok|x\.com|twitter\.com|reddit\.com)\b/.test(host)) {
-          total += 0.30; continue;
-        }
-
-        total += 0.60; // default mid value
+        if (/(facebook|instagram|tiktok|x\.com|twitter\.com|reddit\.com)\b/.test(host)) { total += 0.30; continue; }
+        total += 0.60;
       } catch {
-        total += 0.40; // unparseable URL
+        total += 0.40;
       }
     }
     return clamp01(total / urls.length);
   };
 
-  // User Credibility (V) ∈ [0..1]
   const getUserCredScore = (badge) => {
     if (!badge) return 0;
     if (typeof badge.truthScore === 'number') return clamp01(badge.truthScore);
     const tier = String(badge.tier ?? '').toLowerCase();
-    const tierMap = { bronze: 0.55, silver: 0.70, gold: 0.85, platinum: 0.95 };
-    return clamp01(tierMap[tier] ?? 0.60);
+    const tierMap = { bronze: 0.55, silver: 0.7, gold: 0.85, platinum: 0.95 };
+    return clamp01(tierMap[tier] ?? 0.6);
   };
 
-  // AI Verification (A) ∈ [0..1]
   const getAiVerificationScore = ({ claim, evidenceUrls, evidenceQualityScore }) => {
-    if (typeof claim?.aiVerificationScore === 'number') {
-      return clamp01(claim.aiVerificationScore);
-    }
+    if (typeof claim?.aiVerificationScore === 'number') return clamp01(claim.aiVerificationScore);
     const s = getSourceReliabilityScore(evidenceUrls);
     return clamp01(0.6 * s + 0.4 * evidenceQualityScore);
   };
 
-  // Weight Truth Score ∈ [0..1]
   const computeWeightTruthScore = ({ claim, evidenceUrls, evidenceQualityScore, userBadge }) => {
     const A = getAiVerificationScore({ claim, evidenceUrls, evidenceQualityScore });
     const E = clamp01(evidenceQualityScore ?? 0);
     const V = getUserCredScore(userBadge);
     const S = getSourceReliabilityScore(evidenceUrls);
-
-    const score =
+    return clamp01(
       VERDICT_WEIGHTS.ai * A +
       VERDICT_WEIGHTS.evidence * E +
       VERDICT_WEIGHTS.userCred * V +
-      VERDICT_WEIGHTS.source * S;
-
-    return clamp01(score);
+      VERDICT_WEIGHTS.source * S
+    );
   };
 
-  // Final vote weight
-  const computeVoteWeight = ({ stake, weightMultiplier, weightTruthScore }) => {
-    // You can extend with other multipliers in the future
-    return Math.max(0, stake) * (weightMultiplier || 1) * weightTruthScore;
-  };
+  const computeVoteWeight = ({ stake, weightMultiplier, weightTruthScore }) =>
+    Math.max(0, stake) * (weightMultiplier || 1) * weightTruthScore;
 
-  // ---- helpers -------------------------------------------------------------
-  const getReqForTier = (tier) => {
-    const key = String(tier ?? '').toLowerCase();
-    // retain structure for weightMultiplier; we do NOT enforce max stake anymore
-    return BADGE_REQUIREMENTS?.[key] ?? { maxStakePerVote: 0.001, weightMultiplier: 1 };
-  };
+  const getReqForTier = (tier) =>
+    BADGE_REQUIREMENTS?.[String(tier ?? '').toLowerCase()] ?? {
+      maxStakePerVote: 0.001,
+      weightMultiplier: 1,
+    };
 
-  // ---- effects -------------------------------------------------------------
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  useEffect(() => setIsClient(true), []);
 
   useEffect(() => {
     if (!address) return;
-
-    const loadProfile = async () => {
+    (async () => {
       const userProfile = await storage.getUserProfile(address);
       if (!userProfile) {
         toast.error('Please complete registration first');
@@ -149,17 +126,15 @@ export default function VotePage() {
         return;
       }
       setProfile(userProfile);
-    };
-    loadProfile();
+    })();
   }, [address, router]);
 
   useEffect(() => {
     const claimId = params.id;
-    const loadClaim = async () => {
+    (async () => {
       const loadedClaim = await storage.getClaim(claimId);
       if (loadedClaim) setClaim(loadedClaim);
-    };
-    loadClaim();
+    })();
   }, [params.id]);
 
   useEffect(() => {
@@ -172,141 +147,201 @@ export default function VotePage() {
       return;
     }
 
-    const badge = Array.isArray(profile.badges)
-      ? profile.badges.find((b) => b?.category === claim.category)
-      : null;
-
-    if (badge) {
-      setCategoryBadge(badge);
-      // No max stake. Keep a reasonable default min.
-      setStakeAmount('0.001');
-    } else {
-      setCategoryBadge(null);
-    }
+    const badge =
+      Array.isArray(profile.badges) &&
+      profile.badges.find((b) => b?.category === claim.category);
+    setCategoryBadge(badge || null);
+    setStakeAmount('0.001');
   }, [claim, profile]);
 
-  // ---- handlers ------------------------------------------------------------
+  // -------- helper: friendly error mapping --------
+  const mapVoteError = (err) => {
+    const text =
+      `${err?.shortMessage || ''}\n${err?.message || ''}\n${err?.cause?.reason || ''}\n${err?.cause?.details || ''}`
+        .toLowerCase();
 
- const handleVote = async () => {
-  if (!claim || !address || !voteType || !profile || !categoryBadge) return;
+    if (text.includes('user rejected') || text.includes('user rejected the request') || err?.code === 4001) {
+      return { title: 'Signature rejected', desc: 'You cancelled the transaction.' };
+    }
+    if (text.includes('insufficient funds')) {
+      return { title: 'Insufficient funds', desc: 'Not enough ETH for value + gas on Base Sepolia.' };
+    }
+    if (text.includes('already voted')) {
+      return { title: 'Already voted', desc: 'You have already cast a vote for this claim.' };
+    }
+    if (text.includes('voting period expired') || text.includes('voting period has ended')) {
+      return { title: 'Voting ended', desc: 'The voting period for this claim has already expired.' };
+    }
+    if (text.includes('execution reverted') || text.includes('contractfunctionexecutionerror')) {
+      return { title: 'Transaction reverted', desc: 'The contract rejected this transaction.' };
+    }
+    return { title: 'Transaction failed', desc: 'Something went wrong. Please try again.' };
+  };
 
-  if (!Array.isArray(evidence) || evidence.length === 0) {
-    toast.error('Please provide at least one evidence source');
-    return;
-  }
+  const handleVote = async () => {
+    if (!claim || !address || !voteType || !profile || !categoryBadge) return;
 
-  const stake = parseFloat(stakeAmount);
-  const { weightMultiplier } = getReqForTier(categoryBadge?.tier);
+    if (!Array.isArray(evidence) || evidence.length === 0) {
+      toast.error('Please provide at least one evidence source');
+      return;
+    }
 
-  if (!Number.isFinite(stake)) {
-    toast.error('Enter a valid stake amount');
-    return;
-  }
-  if (stake < 0.001) {
-    toast.error('Minimum stake is 0.001 ETH');
-    return;
-  }
+    const stakeEth = (stakeAmount || '').trim();
+    if (!stakeEth || Number(stakeEth) < 0.001) {
+      toast.error('Minimum stake is 0.001 ETH');
+      return;
+    }
 
-  setLoading(true);
+    if (!walletClient || !publicClient) {
+      toast.error('Wallet not ready. Please reconnect.');
+      return;
+    }
 
-  try {
-    // simulate on-chain call in this mock flow
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    setLoading(true);
+    try {
+      // 1) compute UX scores/weights (off-chain transparency)
+      const { weightMultiplier } = getReqForTier(categoryBadge?.tier);
+      const rawE = calculateEvidenceQualityScore(evidence);
+      const evidenceQualityScore = rawE > 1 ? rawE / 100 : rawE;
 
-    // Raw evidence credibility (could be 0..1 or 0..100 depending on your impl)
-    const rawE = calculateEvidenceQualityScore(evidence);
-    const evidenceQualityScore = rawE > 1 ? rawE / 100 : rawE; // ← normalize to 0..1
+      const weightTruthScore = computeWeightTruthScore({
+        claim,
+        evidenceUrls: evidence,
+        evidenceQualityScore,
+        userBadge: categoryBadge,
+      });
 
-    // Weight Truth Score from AI Verdict formula
-    const weightTruthScore = computeWeightTruthScore({
-      claim,
-      evidenceUrls: evidence,
-      evidenceQualityScore,
-      userBadge: categoryBadge,
-    });
+      const finalWeightFloat = computeVoteWeight({
+        stake: Number(stakeEth),
+        weightMultiplier,
+        weightTruthScore,
+      });
 
-    // Final weight
-    const finalWeight = computeVoteWeight({
-      stake,
-      weightMultiplier,
-      weightTruthScore,
-    });
+      // fixed-point scale (1e18) for on-chain _weight
+      const weightWei = BigInt(Math.floor(finalWeightFloat * 1e18));
+      const stakeWei = parseEther(stakeEth);
+      const isTrue = voteType === 'truth';
+      const onChainClaimId = String(claim.claimId ?? claim.id);
 
-    const vote = {
-      id: `vote-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      claimId: claim.id,
-      voter: profile.displayName,
-      voterAddress: address,
-      vote: voteType,
-      stake,
-      timestamp: Date.now(),
-      badgeTier: categoryBadge.tier,
-      categoryBadge: categoryBadge.category,
-      truthScoreAtVote: categoryBadge.truthScore ?? 0,
-      evidence,
-      evidenceQualityScore,   // now 0..1
-      weightTruthScore,       // transparency
-      weight: finalWeight,
-      roleBadges: profile.roleBadges?.map((rb) => rb.role) || [],
-      voterCity: profile.city,
-      voterProvince: profile.province,
-      voterCountry: profile.country,
-      txHash: `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`,
-    };
+      // --- DEBUG: pre-chain context
+      console.log('[VOTE DEBUG] pre-chain', {
+        onChainClaimId,
+        voterAddress: address,
+        voteType,
+        stakeEth,
+        stakeWei: stakeWei.toString(),
+        weightTruthScore,
+        finalWeightFloat,
+        weightWei: weightWei.toString(),
+        weightMultiplier,
+        evidence,
+        evidenceQualityScore,
+      });
 
-    console.log('Create Votes (client payload): ', vote);
+      // 2) on-chain call
+      const { request } = await publicClient.simulateContract({
+        address: TRUTH_CHAIN_ADDR,
+        abi: TruthChainCore.abi,
+        functionName: 'castVote',
+        args: [onChainClaimId, isTrue, weightWei],
+        account: address,
+        value: stakeWei,
+      });
 
-    // 1) SAVE VOTE FIRST (await)
-    const saved = await storage.saveVote(vote);
-    
+      console.log('[VOTE DEBUG] simulateContract request', request);
 
-    // 2) Update claim aggregates
-    const claimEvidence = (evidence || []).map((url) => ({
-      url,
-      domain: (() => {
-        try { return new URL(url).hostname; } catch { return ''; }
-      })(),
-      addedBy: address,
-      timestamp: Date.now(),
-      qualityScore: evidenceQualityScore,
-    }));
+      const txHash = await walletClient.writeContract(request);
+      console.log('[VOTE DEBUG] tx sent', { txHash });
 
-    const updatedClaim = {
-      truthVotes: (claim.truthVotes || 0) + (voteType === 'truth' ? 1 : 0),
-      fakeVotes: (claim.fakeVotes || 0) + (voteType === 'fake' ? 1 : 0),
-      truthStake: (claim.truthStake || 0) + (voteType === 'truth' ? stake : 0),
-      fakeStake: (claim.fakeStake || 0) + (voteType === 'fake' ? stake : 0),
-      evidence: [...(claim.evidence || []), ...claimEvidence],
-    };
+      toast.message('Transaction sent. Waiting for confirmation…', { description: txHash });
 
-    await storage.updateClaim(claim.id, updatedClaim);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log('[VOTE DEBUG] receipt', receipt);
 
-    // 3) Update profile totals
-    const updatedProfile = {
-      totalStaked: (profile.totalStaked || 0) + stake,
-    };
-    await storage.updateUserProfile(address, updatedProfile);
+      if (receipt.status !== 'success') {
+        throw new Error('Transaction failed or was reverted.');
+      }
 
-    setSuccess(true);
-    toast.success('Vote submitted successfully! 🎉');
-    setTimeout(() => router.push(`/claim/${claim.id}`), 2000);
-  } catch (err) {
-    console.error(err);
-    toast.error('Failed to record vote. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
+      // 3) persist off-chain
+      const offchainDoc = {
+        claimId: onChainClaimId,
+        voter: profile.displayName,
+        voterAddress: address,
+        position: voteType,
+        stake: Number(stakeEth),
+        weight: Number(finalWeightFloat.toFixed(18)),
+        stakeWei: stakeWei.toString(),
+        weightWei: weightWei.toString(),
+        evidence,
+        evidenceQualityScore,
+        weightTruthScore,
+        badgeTier: categoryBadge.tier,
+        categoryBadge: categoryBadge.category,
+        truthScoreAtVote: categoryBadge.truthScore ?? 0,
+        roleBadges: profile.roleBadges?.map((rb) => rb.role) || [],
+        voterCity: profile.city,
+        voterProvince: profile.province,
+        voterCountry: profile.country,
+        onChain: true,
+        txHash,
+        blockchainTxHash: txHash,
+        blockNumber: Number(receipt.blockNumber),
+        chainId: Number(receipt.chainId ?? 84532),
+        reward: 0,
+        rewardWei: '0',
+        rewarded: false,
+        timestamp: Math.floor(Date.now() / 1000),
+        votedAt: new Date().toISOString(),
+        status: 'onchain',
+      };
 
+      console.log('[VOTE DEBUG] off-chain payload → storage.saveVote()', offchainDoc);
+      await storage.saveVote(offchainDoc);
 
-  // ---- render --------------------------------------------------------------
+      // 4) optimistic UI update
+      const claimUpdate = {
+        truthVotes: (claim.truthVotes || 0) + (voteType === 'truth' ? 1 : 0),
+        fakeVotes: (claim.fakeVotes || 0) + (voteType === 'fake' ? 1 : 0),
+        truthStake: (claim.truthStake || 0) + (voteType === 'truth' ? Number(stakeEth) : 0),
+        fakeStake: (claim.fakeStake || 0) + (voteType === 'fake' ? Number(stakeEth) : 0),
+        evidence: [
+          ...(claim.evidence || []),
+          ...evidence.map((url) => ({
+            url,
+            domain: (() => { try { return new URL(url).hostname; } catch { return ''; } })(),
+            addedBy: address,
+            timestamp: Date.now(),
+            qualityScore: evidenceQualityScore,
+          })),
+        ],
+      };
 
+      console.log('[VOTE DEBUG] claim update → storage.updateClaim()', {
+        claimId: claim.id,
+        update: claimUpdate,
+      });
+
+      await storage.updateClaim(claim.id, claimUpdate);
+
+      setSuccess(true);
+      toast.success('Vote confirmed on-chain! 🎉');
+      setTimeout(() => router.push(`/claim/${claim.id}`), 1200);
+    } catch (err) {
+      console.error('[VOTE ERROR]', err);
+      const { title, desc } = mapVoteError(err);
+      toast.error(title, { description: desc });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ---------- render ----------
   if (!isClient) {
     return (
       <div className="container mx-auto px-4 py-8 sm:py-12">
         <div className="animate-pulse space-y-4">
-          <div className="h-12 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+          <div className="h-12 bg-gray-200 rounded w-1/3" />
+          <div className="h-64 bg-gray-200 rounded" />
         </div>
       </div>
     );
@@ -328,13 +363,9 @@ export default function VotePage() {
           <AlertDescription className="text-red-800">
             <p className="font-semibold mb-2">You are not eligible to vote on this claim:</p>
             <ul className="list-disc list-inside space-y-1 text-sm">
-              {(eligibility.reasons || []).map((reason, index) => (
-                <li key={index}>{reason}</li>
-              ))}
+              {(eligibility.reasons || []).map((r, i) => (<li key={i}>{r}</li>))}
             </ul>
-            <p className="mt-3 text-xs">
-              This claim has custom voter scope requirements set by the submitter.
-            </p>
+            <p className="mt-3 text-xs">This claim has custom voter scope requirements set by the submitter.</p>
           </AlertDescription>
         </Alert>
         <div className="mt-4">
@@ -370,8 +401,7 @@ export default function VotePage() {
     );
   }
 
-  const reqForRender = getReqForTier(categoryBadge?.tier);
-  const weightMult = reqForRender.weightMultiplier;
+  const weightMult = getReqForTier(categoryBadge?.tier).weightMultiplier;
 
   return (
     <WalletRequired>
@@ -384,9 +414,7 @@ export default function VotePage() {
             </div>
             <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
               <Shield className="h-4 w-4" />
-              <span>
-                Weight Multiplier: {weightMult}x
-              </span>
+              <span>Weight Multiplier: {weightMult}x</span>
             </div>
           </CardHeader>
 
@@ -397,18 +425,19 @@ export default function VotePage() {
               </div>
               <h3 className="font-semibold text-base sm:text-lg mb-2 dark:text-white">{claim.title}</h3>
               <p className="text-sm sm:text-base text-gray-700 mb-3 dark:text-white">{claim.summary}</p>
-              <a
-                href={claim.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-blue-600 hover:underline text-sm"
-              >
-                <ExternalLink className="h-4 w-4" />
-                View Source
-              </a>
+              {!!claim.url && (
+                <a
+                  href={claim.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-blue-600 hover:underline text-sm"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Source
+                </a>
+              )}
             </div>
 
-            {/* Scope notice if not everyone */}
             {claim.voterScope && !claim.voterScope.everyone && (
               <Alert className="bg-green-50 border-green-200">
                 <CheckCircle className="h-5 w-5 text-green-600" />
@@ -462,9 +491,7 @@ export default function VotePage() {
                     onChange={(e) => setStakeAmount(e.target.value)}
                     disabled={loading}
                   />
-                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                    Minimum: 0.001 ETH. No maximum limit.
-                  </p>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">Minimum: 0.001 ETH. No maximum limit.</p>
                 </div>
 
                 <Alert>

@@ -84,9 +84,15 @@ export function EvidenceInput({ evidence, onChange, minRequired = 1 }) {
               }
             }}
           />
-          <Button type="button" onClick={addEvidence} size="icon">
-            <Plus className="h-4 w-4" />
-          </Button>
+          <Button
+  type="button"
+  size="icon"
+  onClick={addEvidence}
+  className="h-50 w-50"
+  aria-label="Add evidence"
+>
+  <Plus className="h-5 w-5" />
+</Button>
         </div>
         {error && (
           <p className="text-sm text-red-600">{error}</p>

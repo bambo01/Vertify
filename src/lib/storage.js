@@ -219,7 +219,7 @@ export const storage = {
 async saveVote(vote) {
   if (typeof window === "undefined") return vote;
 
-  // Normalize E (0..1) if someone passed a 0..100 number
+  // Normalize E (0..1)
   const normalizedEvidence =
     vote.evidenceQualityScore > 1
       ? vote.evidenceQualityScore / 100
@@ -238,49 +238,86 @@ async saveVote(vote) {
   }
 
   try {
-    // Map to API payload shape
+    // Derive/normalize critical fields
+    const position =
+      clientVote.position ??
+      (typeof clientVote.isTrue === "boolean"
+        ? clientVote.isTrue ? "truth" : "fake"
+        : undefined);
+
+    const voterAddress = (clientVote.voterAddress || "").toLowerCase();
+
+    // Build the API payload your backend expects
     const apiPayload = {
-      // server-side canonical fields
-      claimId: clientVote.claimId,
-      voter: clientVote.voterAddress,     // <- address to 'voter'
-      position: clientVote.vote,          // <- 'truth' | 'fake' to 'position'
-      stake: clientVote.stake,
-      badgeTier: clientVote.badgeTier,
-      categoryBadge: clientVote.categoryBadge,
-      truthScoreAtVote: clientVote.truthScoreAtVote ?? 0,
-      evidence: clientVote.evidence || [],
-      evidenceQualityScore: clientVote.evidenceQualityScore, // already normalized
-      weightTruthScore: clientVote.weightTruthScore,
-      weight: clientVote.weight,
-      metadata: {
-        voterName: clientVote.voter,         // keep displayName for UI
-        voterCity: clientVote.voterCity,
-        voterProvince: clientVote.voterProvince,
-        voterCountry: clientVote.voterCountry,
-        roleBadges: clientVote.roleBadges || [],
-        txHash: clientVote.txHash,
-        clientGeneratedId: clientVote.id,    // preserve for debugging
-        clientTimestamp: clientVote.timestamp,
-      },
+      // required
+      claimId: String(clientVote.claimId),
+      voterAddress,
+      position,                                 // ← correct key
+      stake: Number(clientVote.stake),
+      weight: Number(clientVote.weight),
+      stakeWei: String(clientVote.stakeWei),
+      weightWei: String(clientVote.weightWei),
+      txHash: String(clientVote.txHash),
+      chainId: Number(clientVote.chainId),
+      blockNumber: Number(clientVote.blockNumber),
+      evidence: Array.isArray(clientVote.evidence) ? clientVote.evidence : [],
+
+      // optional/meta
+      voter: clientVote.voter ?? "",            // display name (not the wallet)
+      evidenceQualityScore: clientVote.evidenceQualityScore ?? 1,
+      weightTruthScore: clientVote.weightTruthScore ?? 1,
+      badgeTier: clientVote.badgeTier ?? "",
+      categoryBadge: clientVote.categoryBadge ?? "",
+      truthScoreAtVote: Number(clientVote.truthScoreAtVote ?? 0),
+      roleBadges: Array.isArray(clientVote.roleBadges) ? clientVote.roleBadges : [],
+
+      voterCity: clientVote.voterCity,
+      voterProvince: clientVote.voterProvince,
+      voterCountry: clientVote.voterCountry,
+
+      blockchainTxHash: clientVote.blockchainTxHash || clientVote.txHash,
+      reward: Number(clientVote.reward ?? 0),
+      rewardWei: String(clientVote.rewardWei ?? "0"),
+      rewarded: Boolean(clientVote.rewarded ?? false),
+
+      timestamp: clientVote.timestamp ?? Math.floor(Date.now() / 1000),
+      votedAt: clientVote.votedAt ?? new Date().toISOString(),
+      status: clientVote.status || "onchain",
     };
-    console.log('Save data: ', apiPayload);
+
+    // Preflight (same keys your backend requires)
+    const missing = [
+      "claimId","voterAddress","position",
+      "stakeWei","weightWei","txHash","chainId","blockNumber","evidence"
+    ].filter(k => {
+      const val = apiPayload[k];
+      return (
+        val === undefined || val === null ||
+        (typeof val === "string" && val.trim() === "") ||
+        (Array.isArray(val) && val.length === 0)
+      );
+    });
+    if (missing.length) {
+      throw new Error(`Client validation: missing ${missing.join(", ")}`);
+    }
 
     const savedVote = await apiClient.createVote(apiPayload);
 
-    // Normalize the API response back to your client shape
-    // (your API returns voter=address and position=truth/fake)
+    // Normalize response back to client shape if needed
     return {
       ...clientVote,
       ...savedVote,
       id: savedVote.id ?? clientVote.id,
-      voterAddress: savedVote.voter ?? clientVote.voterAddress,
-      vote: savedVote.position ?? clientVote.vote,
+      voterAddress: apiPayload.voterAddress,
+      position: apiPayload.position,
+      vote: apiPayload.position, // if other parts of UI still read 'vote'
     };
   } catch (error) {
     console.error("Error saving vote:", error);
     throw error;
   }
 },
+
 
 
   async getVotesForClaim(claimId) {

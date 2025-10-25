@@ -33,13 +33,11 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { finalizeVoting } from '@/lib/finalize';
 
 /* ------------------------- config -------------------------------------- */
 const SERVER_BASE = 'https://verity.up.railway.app';
 
 async function postServerVerification(claimId, payload) {
-  
   console.log('[AI VERIFY] outgoing payload:', { claimId, ...payload });
 
   const res = await fetch(
@@ -55,7 +53,24 @@ async function postServerVerification(claimId, payload) {
     const txt = await res.text().catch(() => '');
     throw new Error(`Verify API failed (${res.status}): ${txt}`);
   }
-  return res.json(); 
+  return res.json();
+}
+
+/* ✅ NEW: finalize helper */
+async function postServerFinalize(claimId, { feeBps = 0 } = {}) {
+  const res = await fetch(
+    `${SERVER_BASE}/api/claims/${encodeURIComponent(claimId)}/finalize`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ feeBps }),
+    }
+  );
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Finalize API failed (${res.status}): ${txt}`);
+  }
+  return res.json();
 }
 
 /* ------------------------- helpers -------------------------------------- */
@@ -523,6 +538,58 @@ export default function ClaimDetailPage() {
         console.warn('Vote refresh failed:', e?.message || e);
         setApiVotes([]);
         setApiVoteStats(null);
+      }
+
+      /* ✅ 5) Finalize payouts if decisive & time ended */
+      try {
+        // Prefer freshest AI result we just set
+        const av =
+          (serverResult?.updated?.aiVerification) ||
+          (serverResult?.updatedClaim?.aiVerification) ||
+          (serverResult?.aiVerification) ||
+          (claim?.aiVerification) ||
+          null;
+
+        const ended = votingEndsMs && Date.now() >= votingEndsMs;
+        const decisive = av && (av.result === 'Truth' || av.result === 'Fake');
+        const alreadyResolved = (claim?.status === 'resolved');
+
+        if (ended && decisive && !alreadyResolved) {
+          const finalizeResp = await postServerFinalize(claimKey, { feeBps: 0 });
+
+          setClaim((c) => ({
+            ...(c || endedClaim),
+            status: 'resolved',
+            finalVerdict: {
+              side: finalizeResp?.winner || (av.result === 'Truth' ? 'truth' : 'fake'),
+              score: Number(av?.finalScore || 0),
+              reason: av?.reasoning || '',
+              sources: Array.isArray(av?.sources) ? av.sources : [],
+            },
+            payout: {
+              status: finalizeResp?.perWeightWei ? 'settled' : 'skipped',
+              poolEth: finalizeResp?.payout?.poolEth ?? c?.payout?.poolEth ?? 0,
+              perWeightWei: finalizeResp?.perWeightWei || '0',
+            },
+          }));
+
+          // Refresh votes so winner rewards appear
+          try {
+            const vResp2 = await fetch(`${SERVER_BASE}/api/votes/${encodeURIComponent(claimKey)}`);
+            if (vResp2.ok) {
+              const raw2 = await vResp2.json();
+              const maybeVotes2 =
+                (Array.isArray(raw2?.votes) && raw2.votes) ||
+                (Array.isArray(raw2?.data?.votes) && raw2.data.votes) ||
+                (Array.isArray(raw2?.data) && raw2.data) ||
+                (Array.isArray(raw2) && raw2) || [];
+              setApiVotes(maybeVotes2.map(normalizeApiVote));
+            }
+          } catch {}
+        }
+      } catch (e) {
+        console.error('Finalize call failed:', e);
+        // toast.error('Finalize failed. Please try again from the claim page.');
       }
     } catch (err) {
       console.error('Finalize error:', err);
