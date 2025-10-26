@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
@@ -42,6 +42,9 @@ import {
 const EXPLORER_BASE =
   process.env.NEXT_PUBLIC_BLOCK_EXPLORER_BASE || "https://sepolia.basescan.org";
 
+// ✅ Default Testing Mode ON
+const TEST_AUTO_APPROVE = true;
+
 /* -----------------------
    Simple mount-only fade
 ------------------------ */
@@ -81,6 +84,15 @@ export default function DashboardPage() {
   // Modal: show when user.status === 'pending'
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // countdowns
+  const [autoCheckIn, setAutoCheckIn] = useState(3); // 3s loop (testing)
+  const [estApprovalIn, setEstApprovalIn] = useState(null); // ~10s threshold
+
+  // refs for timers
+  const estTimerRef = useRef(null);
+  const autoCheckIntervalRef = useRef(null);
+  const autoCheckCountdownRef = useRef(null);
 
   // per-category claim spinner
   const [claiming, setClaiming] = useState({});
@@ -124,9 +136,7 @@ export default function DashboardPage() {
       setCheckingStatus(true);
       const updated = await storage.getUserProfile(address);
       setProfile(updated);
-      setShowPendingModal(
-        (updated?.status || "").toLowerCase() === "pending"
-      );
+      setShowPendingModal((updated?.status || "").toLowerCase() === "pending");
     } finally {
       setCheckingStatus(false);
     }
@@ -154,6 +164,61 @@ export default function DashboardPage() {
     };
     loadData();
   }, [address, router]);
+
+  // Manage countdowns while the pending modal is open
+  useEffect(() => {
+    const clearTimers = () => {
+      if (estTimerRef.current) {
+        clearInterval(estTimerRef.current);
+        estTimerRef.current = null;
+      }
+      if (autoCheckIntervalRef.current) {
+        clearInterval(autoCheckIntervalRef.current);
+        autoCheckIntervalRef.current = null;
+      }
+      if (autoCheckCountdownRef.current) {
+        clearInterval(autoCheckCountdownRef.current);
+        autoCheckCountdownRef.current = null;
+      }
+    };
+
+    if (!showPendingModal) {
+      clearTimers();
+      return;
+    }
+
+    // Estimated approval countdown (to ~10s after registration)
+    const updateEstRemaining = () => {
+      const t =
+        typeof profile?.registeredAt === "number"
+          ? profile.registeredAt
+          : profile?.registeredAt
+          ? new Date(profile.registeredAt).getTime()
+          : NaN;
+      if (!Number.isFinite(t)) {
+        setEstApprovalIn(null);
+        return;
+      }
+      const elapsed = Math.floor((Date.now() - t) / 1000);
+      const remain = Math.max(0, 10 - elapsed);
+      setEstApprovalIn(remain);
+    };
+    updateEstRemaining();
+    estTimerRef.current = setInterval(updateEstRemaining, 1000);
+
+    // testing: auto-check every 3s + countdown display 3→2→1
+    setAutoCheckIn(3);
+    autoCheckCountdownRef.current = setInterval(() => {
+      setAutoCheckIn((s) => (s && s > 1 ? s - 1 : 3));
+    }, 1000);
+    autoCheckIntervalRef.current = setInterval(() => {
+      setAutoCheckIn(3);
+      refreshProfile();
+    }, 3000);
+
+    return clearTimers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPendingModal, profile?.registeredAt]);
 
   useEffect(() => {
     const calculateCorrect = async () => {
@@ -318,6 +383,8 @@ export default function DashboardPage() {
     );
   }
 
+  const isPending = (profile?.status || "").toLowerCase() === "pending";
+
   return (
     <WalletRequired>
       {/* Pending status modal */}
@@ -326,19 +393,52 @@ export default function DashboardPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
-              Account pending review
+              Account pending (testing)
             </DialogTitle>
-            <DialogDescription>
-              Thanks for registering. Please wait while an admin validates your
-              account. You’ll get full access once approved.
+
+            {/* ✅ FIX: use asChild to avoid <div> inside <p> */}
+            <DialogDescription asChild>
+              <div className="text-sm text-muted-foreground">
+                <div className="mb-2">
+                  <Badge variant="secondary" className="uppercase">
+                    Testing Mode
+                  </Badge>
+                </div>
+                <p>
+                  This is a <strong>testing environment</strong>. New accounts are{" "}
+                  <strong>auto-approved</strong> shortly after registration (about{" "}
+                  <strong>10 seconds</strong>) so you can try the app quickly.
+                </p>
+                <p className="mt-2 text-xs">
+                  In production, an admin reviews and validates user information before approval.
+                </p>
+              </div>
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-2 text-sm text-muted-foreground space-y-1">
-            <div>
-              Current status:&nbsp;
+          <div className="mt-2 text-sm text-muted-foreground space-y-2">
+            <div className="flex items-center gap-2">
+              <span>Current status:</span>
               <Badge variant="secondary">Pending</Badge>
             </div>
+
+            {/* Countdown row(s) */}
+            <div className="text-xs">
+              {estApprovalIn !== null && estApprovalIn > 0 ? (
+                <div>
+                  Estimated auto-approval in:{" "}
+                  <span className="font-semibold">{estApprovalIn}s</span>
+                </div>
+              ) : (
+                <div className="text-emerald-600">
+                  Should be ready — click <span className="font-semibold">Refresh status</span>.
+                </div>
+              )}
+              <div className="mt-1">
+                Auto-check in: <span className="font-semibold">{autoCheckIn}s</span>
+              </div>
+            </div>
+
             {profile?.roleVerificationSummary?.method && (
               <div>Verification: {profile.roleVerificationSummary.method}</div>
             )}
@@ -366,6 +466,12 @@ export default function DashboardPage() {
               <p className="text-gray-600 dark:text-gray-400">
                 Track your fact-checking performance and earn badges
               </p>
+              {isPending && (
+                <div className="mt-2 text-xs text-amber-600">
+                  Testing mode: your account should auto-approve shortly. This page will update
+                  automatically.
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -384,71 +490,70 @@ export default function DashboardPage() {
           </div>
         </MountFade>
 
-       {/* KPIs (uniform height) */}
-<div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 items-stretch auto-rows-fr">
-  <MountFade delay={0}>
-    <Card className="h-full">
-      <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <Target className="h-8 w-8 text-purple-600" />
-          <span className="text-3xl font-bold dark:text-white">
-            {((profile.overallTruthScore ?? 0) * 100).toFixed(0)}%
-          </span>
-        </div>
-        <div>
-          <p className="text-gray-600 dark:text-gray-400 mb-2">Truth Score</p>
-          <Progress value={(profile.overallTruthScore ?? 0) * 100} />
-        </div>
-      </CardContent>
-    </Card>
-  </MountFade>
+        {/* KPIs (uniform height) */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 items-stretch auto-rows-fr">
+          <MountFade delay={0}>
+            <Card className="h-full">
+              <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <Target className="h-8 w-8 text-purple-600" />
+                  <span className="text-3xl font-bold dark:text-white">
+                    {((profile.overallTruthScore ?? 0) * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div>
+                  <p className="text-gray-600 dark:text-gray-400 mb-2">Truth Score</p>
+                  <Progress value={(profile.overallTruthScore ?? 0) * 100} />
+                </div>
+              </CardContent>
+            </Card>
+          </MountFade>
 
-  <MountFade delay={70}>
-    <Card className="h-full">
-      <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <VoteIcon className="h-8 w-8 text-green-600" />
-          <span className="text-3xl font-bold dark:text-white">
-            {userVotes.length}
-          </span>
-        </div>
-        <div>
-          <p className="text-gray-600 dark:text-gray-400">Total Votes</p>
-          <p className="text-sm text-green-600 mt-1">{correctVotes} correct</p>
-        </div>
-      </CardContent>
-    </Card>
-  </MountFade>
+          <MountFade delay={70}>
+            <Card className="h-full">
+              <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <VoteIcon className="h-8 w-8 text-green-600" />
+                  <span className="text-3xl font-bold dark:text-white">
+                    {userVotes.length}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-gray-600 dark:text-gray-400">Total Votes</p>
+                  <p className="text-sm text-green-600 mt-1">{correctVotes} correct</p>
+                </div>
+              </CardContent>
+            </Card>
+          </MountFade>
 
-  <MountFade delay={140}>
-    <Card className="h-full">
-      <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <Award className="h-8 w-8 text-yellow-600" />
-          <span className="text-3xl font-bold dark:text-white">
-            {accuracy.toFixed(0)}%
-          </span>
-        </div>
-        <p className="text-gray-600 dark:text-gray-400">Vote Accuracy</p>
-      </CardContent>
-    </Card>
-  </MountFade>
+          <MountFade delay={140}>
+            <Card className="h-full">
+              <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <Award className="h-8 w-8 text-yellow-600" />
+                  <span className="text-3xl font-bold dark:text-white">
+                    {accuracy.toFixed(0)}%
+                  </span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400">Vote Accuracy</p>
+              </CardContent>
+            </Card>
+          </MountFade>
 
-  <MountFade delay={210}>
-    <Card className="h-full">
-      <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <TrendingUp className="h-8 w-8 text-blue-600" />
-          <span className="text-3xl font-bold dark:text-white">
-            {totalEarnings.toFixed(3)}
-          </span>
+          <MountFade delay={210}>
+            <Card className="h-full">
+              <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <TrendingUp className="h-8 w-8 text-blue-600" />
+                  <span className="text-3xl font-bold dark:text-white">
+                    {totalEarnings.toFixed(3)}
+                  </span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400">ETH Earned</p>
+              </CardContent>
+            </Card>
+          </MountFade>
         </div>
-        <p className="text-gray-600 dark:text-gray-400">ETH Earned</p>
-      </CardContent>
-    </Card>
-  </MountFade>
-</div>
-
 
         {/* Current badges */}
         <MountFade delay={260}>

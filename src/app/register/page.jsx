@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
 import { WalletRequired } from "@/components/wallet-connect";
@@ -48,6 +48,11 @@ export default function RegisterPage() {
   const [step, setStep] = useState(1);
   const [isClient, setIsClient] = useState(false);
 
+  // Step 1 – display name uniqueness
+  const [nameStatus, setNameStatus] = useState("idle"); // 'idle' | 'checking' | 'available' | 'taken' | 'error'
+  const [nameNote, setNameNote] = useState("");
+  const nameCheckTimer = useRef(null);
+
   // Step 3 – dynamic verification states
   // Student block
   const [studentLast4, setStudentLast4] = useState("");
@@ -73,6 +78,57 @@ export default function RegisterPage() {
     };
     checkProfile();
   }, [address, router]);
+
+  // ---------- Display name uniqueness (debounced) ----------
+  const normalize = (s) =>
+    String(s || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+
+  useEffect(() => {
+    // clear last timer
+    if (nameCheckTimer.current) clearTimeout(nameCheckTimer.current);
+
+    const name = displayName;
+    const norm = normalize(name);
+
+    if (!norm) {
+      setNameStatus("idle");
+      setNameNote("Choose a unique public name.");
+      return;
+    }
+
+    // optional: enforce a small min length
+    if (norm.length < 3) {
+      setNameStatus("idle");
+      setNameNote("Name must be at least 3 characters.");
+      return;
+    }
+
+    setNameStatus("checking");
+    setNameNote("Checking availability…");
+
+    nameCheckTimer.current = setTimeout(async () => {
+      try {
+        const list = await storage.listProfiles(); // expects array of profiles
+        const taken = Array.isArray(list)
+          ? list.some((p) => normalize(p?.displayName) === norm)
+          : false;
+
+        if (taken) {
+          setNameStatus("taken");
+          setNameNote("This display name is already taken. Please choose another.");
+        } else {
+          setNameStatus("available");
+          setNameNote("Nice! This name is available.");
+        }
+      } catch (e) {
+        setNameStatus("error");
+        setNameNote("Could not verify name availability. You can still try to continue.");
+      }
+    }, 300); // debounce 300ms
+  }, [displayName]);
 
   // Helpers
   const isValidLinkedIn = (url) =>
@@ -119,14 +175,6 @@ export default function RegisterPage() {
         (r) => r !== STUDENT_ROLE && !PRC_OR_LINKEDIN_ROLES.includes(r)
       );
 
-      // Mode guide:
-      // - 'student_only'             : only Student selected → Student ID required
-      // - 'student_plus'             : Student plus other roles
-      //   - otherBlockMode:
-      //       - 'linkedin_only'      : if any "other" roles present
-      //       - 'prc_or_linkedin'    : if only PRC-or-LI roles present (no "other")
-      // - 'prc_or_linkedin'          : PRC-or-LI roles only (no Student, no "other")
-      // - 'linkedin_only'            : only "other" roles OR mix of PRC-or-LI + other (no Student)
       let mode = "linkedin_only";
       let otherBlockMode = null;
 
@@ -147,8 +195,8 @@ export default function RegisterPage() {
 
   const handleNext = () => {
     if (step === 1) {
-      if (!displayName.trim())
-        return toast.error("Please enter a display name");
+      if (!displayName.trim()) return toast.error("Please enter a display name");
+      if (nameStatus === "taken") return toast.error("Display name is already taken");
       setStep(2);
       return;
     }
@@ -178,14 +226,12 @@ export default function RegisterPage() {
       }
 
       if (mode === "student_plus") {
-        // Student part required
         if (studentLast4.replace(/\D/g, "").length < 4) {
           return toast.error("Enter the last 4 digits of your Student ID");
         }
         if (!studentImageFile) {
           return toast.error("Please upload a clear image of your Student ID");
         }
-        // Other block required
         if (otherBlockMode === "linkedin_only") {
           if (!isValidLinkedIn(linkedinUrlMain)) {
             return toast.error("Enter a valid LinkedIn profile URL");
@@ -239,10 +285,13 @@ export default function RegisterPage() {
     if (selectedCategories.length === 0)
       return toast.error("Please select at least one category");
 
-    // No category badges at signup; created after admin approval + user claim
+    // pre-flight: final name check
+    if (!displayName.trim() || nameStatus === "taken") {
+      return toast.error("Please choose a unique display name before continuing.");
+    }
+
     const initialBadges = [];
 
-    // Prepare images as data URLs (local/offline)
     let studentImageDataUrl = null;
     let prcImageDataUrl = null;
 
@@ -255,7 +304,6 @@ export default function RegisterPage() {
       return toast.error("Failed to read image(s). Please try again.");
     }
 
-    // Build roleBadges with per-role verification + issuance state
     const roleBadges = selectedRoles.map((role) => {
       const badgeState = { status: "not_eligible" };
 
@@ -285,7 +333,6 @@ export default function RegisterPage() {
         };
       }
 
-      // Non-student roles:
       if (mode === "student_plus") {
         if (otherBlockMode === "linkedin_only") {
           return {
@@ -319,7 +366,6 @@ export default function RegisterPage() {
               },
             };
           }
-          // methodMain === 'prc'
           return {
             role,
             tier: "silver",
@@ -405,7 +451,6 @@ export default function RegisterPage() {
       };
     });
 
-    // Summary for admin UI
     const roleVerificationSummary = (() => {
       const studentIdImage =
         studentImageDataUrl && studentImageFile
@@ -467,7 +512,6 @@ export default function RegisterPage() {
             };
       }
 
-      // linkedin_only
       return { method: "linkedin", linkedinUrl: linkedinUrlMain.trim() };
     })();
 
@@ -475,29 +519,20 @@ export default function RegisterPage() {
       address,
       displayName: displayName.trim(),
       registeredAt: Date.now(),
+      status: "pending",
 
-      status: "pending", // global profile state
-
-      // Location
       city: geo.city,
       province: geo.province,
       country: geo.country,
 
-      // Roles + role-level verifications
       roles: selectedRoles,
       roleBadges,
-
-      // Summary (for admin view)
       roleVerificationSummary,
 
-      // Misc
       residencyAttestationRef: `mock-attestation-${Date.now()}`,
-
-      // Categories only; badges are empty until approval+claim
       categories: selectedCategories,
       badges: initialBadges,
 
-      // Stats (initial)
       overallTruthScore: 0,
       totalStaked: 0,
       totalEarned: 0,
@@ -564,9 +599,11 @@ export default function RegisterPage() {
       );
     }
 
-    // linkedin_only
     return !isValidLinkedIn(linkedinUrlMain);
   })();
+
+  const step1Disabled =
+    !displayName.trim() || nameStatus === "taken" || nameStatus === "checking";
 
   return (
     <WalletRequired>
@@ -689,9 +726,17 @@ export default function RegisterPage() {
                     onChange={(e) => setDisplayName(e.target.value)}
                     maxLength={50}
                   />
-                  <p className="text-xs text-gray-500 dark:text-white/80">
-                    This name will be visible to others when you vote and submit
-                    claims
+                  <p
+                    className={
+                      nameStatus === "taken"
+                        ? "text-xs text-red-600"
+                        : nameStatus === "available"
+                        ? "text-xs text-emerald-600"
+                        : "text-xs text-gray-500 dark:text-white/80"
+                    }
+                  >
+                    {nameNote ||
+                      "This name will be visible to others when you vote and submit claims"}
                   </p>
                 </div>
                 <Card className="bg-[#44ADFF]/10 border-blue-200 dark:border-gray-600">
@@ -742,9 +787,7 @@ export default function RegisterPage() {
                       </div>
                       <div className="grid sm:grid-cols-2 gap-3">
                         <div className="space-y-2">
-                          <Label htmlFor="studentLast4">
-                            Student ID
-                          </Label>
+                          <Label htmlFor="studentLast4">Student ID</Label>
                           <Input
                             id="studentLast4"
                             type="text"
@@ -1126,15 +1169,13 @@ export default function RegisterPage() {
                     <div className="text-xs sm:text-sm text-gray-700 space-y-2 dark:text-gray-400">
                       <p>
                         <strong>Silver Badge (Starting):</strong> unlocked after
-                        admin approval 
+                        admin approval
                       </p>
                       <p>
                         <strong>Gold Badge:</strong> 75% accuracy + 20 votes.
-                       
                       </p>
                       <p>
                         <strong>Expert Badge:</strong> 85% accuracy + 100 votes.
-                       
                       </p>
                     </div>
                   </CardContent>
@@ -1156,11 +1197,11 @@ export default function RegisterPage() {
                 onClick={handleNext}
                 className="w-full sm:flex-1 bg-[#008FFF] hover:bg-[#3563E9] order-1 sm:order-2"
                 disabled={
-                  (step === 1 && !displayName.trim()) ||
+                  (step === 1 && step1Disabled) ||
                   (step === 2 &&
                     (!geo.country || !geo.province || !geo.city)) ||
                   (step === 3 && step3Disabled) ||
-                    (step === 4 && selectedCategories.length === 0)
+                  (step === 4 && selectedCategories.length === 0)
                 }
               >
                 {step === 4 ? "Complete Registration" : "Continue"}

@@ -29,6 +29,7 @@ import {
   User2,
   MapPin,
   CalendarClock,
+  Zap
 } from 'lucide-react';
 
 const ADMIN_ADDRESS = '0x42C31Db2d6B12D5CD81e23d33eab7Abf49188E35';
@@ -60,6 +61,10 @@ function Dashboard() {
   const [detailsLoading, setDetailsLoading] = useState(false);
 
   const isMounted = useRef(true);
+
+  // Auto-approve (10s) state and reentrancy guard
+  const [autoApprove, setAutoApprove] = useState(false);
+  const autoApproving = useRef(false);
 
   // helpers
   const fmtDate = (d) => {
@@ -172,7 +177,7 @@ function Dashboard() {
         address: row.address,
         role: row.role,
         status, // 'approved' | 'rejected'
-        reviewer,
+        reviewer: reviewer || ADMIN_ADDRESS,
       });
 
       await refresh();
@@ -198,6 +203,84 @@ function Dashboard() {
       setDetailsLoading(false);
     }
   };
+
+  // helper: get pending roles for a profile
+  const getPendingRoles = (p) => {
+    const addr = (p.address || p.walletAddress || '').toLowerCase();
+    const roles = [];
+
+    if (Array.isArray(p.roleBadges) && p.roleBadges.length) {
+      p.roleBadges.forEach((rb) => {
+        const status = (rb?.verification?.status || p.status || 'pending').toLowerCase();
+        if (status === 'pending') {
+          roles.push({ address: addr, role: rb.role });
+        }
+      });
+    } else {
+      const rlist = Array.isArray(p.roles) && p.roles.length ? p.roles : ['(unspecified role)'];
+      const status = (p.roleVerificationSummary?.status || p.status || 'pending').toLowerCase();
+      if (status === 'pending') {
+        rlist.forEach((r) => roles.push({ address: addr, role: r }));
+      }
+    }
+
+    return roles;
+  };
+
+  // auto-approve heartbeat (10s age, approves one pending role per tick)
+  useEffect(() => {
+    if (!autoApprove) return;
+
+    const tick = async () => {
+      if (autoApproving.current) return;
+      autoApproving.current = true;
+
+      try {
+        const now = Date.now();
+        let target = null;
+
+        for (const p of profiles) {
+          const t = typeof p?.registeredAt === 'number'
+            ? p.registeredAt
+            : (p?.registeredAt ? new Date(p.registeredAt).getTime() : NaN);
+
+          if (!Number.isFinite(t)) continue;
+          if (now - t < 10000) continue; // must be at least 10s old
+
+          const pendings = getPendingRoles(p);
+          if (pendings.length > 0) {
+            target = pendings[0];
+            break;
+          }
+        }
+
+        if (target) {
+          const key = `${target.address}-${target.role}`;
+          setBusyKey(key);
+          const wasLive = live;
+          if (wasLive) setLive(false);
+
+          await storage.updateUserStatus({
+            address: target.address,
+            role: target.role,
+            status: 'approved',
+            reviewer: reviewer || ADMIN_ADDRESS,
+          });
+
+          await refresh();
+          if (wasLive) setLive(true);
+          setBusyKey(null);
+        }
+      } catch (e) {
+        // optional: console.error(e);
+      } finally {
+        autoApproving.current = false;
+      }
+    };
+
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [autoApprove, profiles, live, reviewer]);
 
   return (
     <>
@@ -398,7 +481,7 @@ function Dashboard() {
                 </div>
               </div>
 
-              {/* Badges summary (category badges progression, if any) */}
+              {/* Badges summary */}
               <div className="rounded-lg border bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <div className="mb-2 font-semibold">Badges</div>
                 {(detailsProfile.badges || []).length === 0 ? (
@@ -433,6 +516,11 @@ function Dashboard() {
             <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
               {lastUpdated ? `Last updated: ${new Date(lastUpdated).toLocaleTimeString()}` : '—'}
               {errMsg && <span className="ml-2 text-red-600 dark:text-red-400">({errMsg})</span>}
+              {autoApprove && (
+                <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                  Auto-approve: ON (10s)
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -440,6 +528,18 @@ function Dashboard() {
               {live ? <Radio className="mr-2 h-4 w-4" /> : <Pause className="mr-2 h-4 w-4" />}
               {live ? 'Live: ON' : 'Live: OFF'}
             </Button>
+
+            {/* Auto-approve toggle */}
+            <Button
+              size="sm"
+              variant={autoApprove ? 'default' : 'outline'}
+              onClick={() => setAutoApprove((v) => !v)}
+              title="Automatically approve pending users once their registration hits 10s old."
+            >
+              <Zap className="mr-2 h-4 w-4" />
+              {autoApprove ? 'Auto-approve: ON' : 'Auto-approve: OFF'}
+            </Button>
+
             <Button size="sm" variant="outline" onClick={refresh}>
               Refresh now
             </Button>
