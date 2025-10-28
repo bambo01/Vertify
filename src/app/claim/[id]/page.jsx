@@ -683,16 +683,7 @@ export default function ClaimDetailPage() {
                 </>
               )}
 
-              {/* ✅ Claim Reward button next to the badge (driven by AI verdict + payout availability) */}
-              {canClaimNow && (
-                <div className="ml-auto">
-                  <ClaimRewardButton
-                    claimId={claim.claimId || claim.id}
-                    className="mt-1"
-                    size="sm"
-                  />
-                </div>
-              )}
+             
             </div>
 
             <h1 className="text-4xl font-bold mb-4">{claim.title}</h1>
