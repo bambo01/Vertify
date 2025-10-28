@@ -5,9 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { storage } from '@/lib/storage';
-// import { verifyClaimWithAI } from '@/lib/ai-verification'; // ❌ removed (AI now on BE)
-import { calculateResolution } from '@/lib/resolution';
-import { checkAndUpgradeBadge } from '@/lib/badge-upgrades';
 import { getEligibleVotersCount } from '@/lib/eligibility';
 import { BadgeDisplay } from '@/components/badge-display';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +31,9 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 
+/* ✅ Claim Reward button component */
+import ClaimRewardButton from '@/components/ClaimRewardButton';
+
 /* ------------------------- config -------------------------------------- */
 const SERVER_BASE = 'https://verity.up.railway.app';
 
@@ -56,7 +56,7 @@ async function postServerVerification(claimId, payload) {
   return res.json();
 }
 
-/* ✅ NEW: finalize helper */
+/* ✅ finalize helper */
 async function postServerFinalize(claimId, { feeBps = 0 } = {}) {
   const res = await fetch(
     `${SERVER_BASE}/api/claims/${encodeURIComponent(claimId)}/finalize`,
@@ -97,7 +97,6 @@ const normalizeEvidence = (evidence) => {
   });
 };
 
-// For user's vote: ensure we end up with string URLs (handles {url, _id} objects)
 const normalizeVoteEvidence = (arr) =>
   Array.isArray(arr)
     ? arr
@@ -105,14 +104,13 @@ const normalizeVoteEvidence = (arr) =>
         .filter((u) => typeof u === 'string' && u.length > 0)
     : [];
 
-// Map API vote → UI-friendly shape
 const normalizeApiVote = (v) => ({
   id: v.id || v._id || v.blockchainTxHash,
   _id: v._id,
   voter: v.voter,
   voterAddress: v.voterAddress,
-  position: v.position,                 // 'truth' | 'fake'
-  vote: v.position,                     // mirror to old key
+  position: v.position,
+  vote: v.position,
   stake: Number(v.stake) || 0,
   evidence: Array.isArray(v.evidence) ? v.evidence : [],
   evidenceQualityScore: Number(v.evidenceQualityScore) || 0,
@@ -132,7 +130,6 @@ const normalizeApiVote = (v) => ({
   timestamp: v.timestamp || (v.votedAt?.$date ? Date.parse(v.votedAt.$date) : undefined),
 });
 
-/* --- truth/fake-only summarizer helpers --- */
 const normPos = (s) => String(s ?? '').toLowerCase();
 
 const summarizeTruthFake = (arr = []) => {
@@ -151,10 +148,7 @@ export default function ClaimDetailPage() {
   const [claim, setClaim] = useState(null);
   const [displayName, setDisplayName] = useState(null);
 
-  // Local/fallback votes
   const [votes, setVotes] = useState([]);
-
-  // API-driven votes & stats
   const [apiVotes, setApiVotes] = useState([]);
   const [apiVoteStats, setApiVoteStats] = useState(null);
 
@@ -169,16 +163,16 @@ export default function ClaimDetailPage() {
     setIsClient(true);
   }, []);
 
-  // Load claim + its votes (local fallback)
+  // Load claim + local votes
   useEffect(() => {
     const loadClaim = async () => {
       const claimId = params.id;
       const loadedClaim = await storage.getClaim(claimId);
-   
+      console.log('my claimId')
       if (loadedClaim) {
         const loadedUser = await storage.getUserProfile(loadedClaim.poster);
-        console.log('Poster Id: ', loadedUser.displayName);
-        setDisplayName(loadedUser.displayName);
+        console.log('Poster Id: ', loadedUser?.displayName);
+        setDisplayName(loadedUser?.displayName || '');
         setClaim(loadedClaim);
         const claimVotes = await storage.getVotesForClaim(claimId);
         setVotes(claimVotes);
@@ -197,7 +191,7 @@ export default function ClaimDetailPage() {
     loadClaim();
   }, [params.id]);
 
-  // Prefer API votes/stats when available (and normalize API shape)
+  // Fetch API votes/stats
   useEffect(() => {
     const claimId = params?.id;
     if (!claimId) return;
@@ -210,7 +204,6 @@ export default function ClaimDetailPage() {
         const raw = await resp.json();
         if (cancelled) return;
 
-        // --- Robust extraction of votes array, regardless of shape ---
         const maybeVotes =
           (Array.isArray(raw?.votes) && raw.votes) ||
           (Array.isArray(raw?.data?.votes) && raw.data.votes) ||
@@ -267,7 +260,7 @@ export default function ClaimDetailPage() {
     return () => { cancelled = true; };
   }, [params?.id]);
 
-  // Track user's vote (prefer API votes)
+  // Track my vote
   useEffect(() => {
     if (!address) { setMyVote(null); return; }
     const source = apiVotes?.length ? apiVotes : votes;
@@ -277,7 +270,7 @@ export default function ClaimDetailPage() {
     setMyVote(found || null);
   }, [address, votes, apiVotes]);
 
-  // Load vote profiles (prefer API votes)
+  // Load profiles
   useEffect(() => {
     const loadProfiles = async () => {
       const profiles = {};
@@ -292,7 +285,7 @@ export default function ClaimDetailPage() {
     if (src.length > 0) loadProfiles();
   }, [votes, apiVotes]);
 
-  // Normalize votingEndsAt → ms
+  // voting end ms
   const votingEndsMs = useMemo(() => {
     const v = claim?.votingEndsAt;
     if (typeof v === 'number') return v;
@@ -303,7 +296,7 @@ export default function ClaimDetailPage() {
     return 0;
   }, [claim]);
 
-  // Live timer
+  // Timer
   useEffect(() => {
     if (!claim) return;
     const updateTimer = () => {
@@ -330,16 +323,27 @@ export default function ClaimDetailPage() {
     return () => clearInterval(interval);
   }, [claim, votingEndsMs]);
 
-  // Eligible voters (async)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!claim) return;
-      const n = await getEligibleVotersCount(claim);
-      if (!cancelled) setEligibleCount(n);
-    })();
-    return () => { cancelled = true; };
-  }, [claim]);
+  // Eligible voters
+  
+
+  // ---- derive AI verdict (drive UI from AI, not status) ----
+  const verdictRaw = useMemo(
+    () =>
+      String(
+        claim?.aiVerification?.result ??
+        claim?.aiVerdict?.result ??
+        ''
+      ).toLowerCase(),
+    [claim]
+  );
+
+  const showAiVerifiedBadge =
+    verdictRaw === 'truth' || verdictRaw === 'fake' || verdictRaw === 'uncertain';
+
+  // Optional: only show claim button if BE produced a non-zero payout-per-weight
+  const canClaimNow =
+    (verdictRaw === 'truth' || verdictRaw === 'fake') &&
+    String(claim?.payout?.perWeightWei ?? '0') !== '0';
 
   const handleVotingEnd = async (endedClaim) => {
     if (!endedClaim || endedClaim.status !== 'voting') return;
@@ -347,10 +351,10 @@ export default function ClaimDetailPage() {
     setVerifying(true);
 
     try {
-      // 1) Optimistic UI lock
+      // lock UI
       setClaim((c) => ({ ...(c || endedClaim), status: 'ended' }));
 
-      // 2) Build context (same as before)
+      // build context
       const srcVotes = (apiVotes?.length ? apiVotes : votes) || [];
       const { truthVotes, fakeVotes } = summarizeTruthFake(srcVotes);
 
@@ -437,7 +441,6 @@ export default function ClaimDetailPage() {
         };
       });
 
-      // ---- Fixed weights for transparency ----
       const weightPlan = {
         aiWeight: 0.35,
         evidenceWeight: 0.25,
@@ -445,7 +448,6 @@ export default function ClaimDetailPage() {
         sourceWeight: 0.20,
       };
 
-      // 3) 🚀 NEW: send to backend for AI verification (single call)
       const claimKey = endedClaim.claimId || endedClaim.id;
 
       const aiVerifyPayload = {
@@ -465,7 +467,6 @@ export default function ClaimDetailPage() {
         weightPlan,
       };
 
-      // 🔎 See exactly what BE receives
       console.log('[AI VERIFY] payload to BE:', aiVerifyPayload);
 
       let serverResult = null;
@@ -489,10 +490,9 @@ export default function ClaimDetailPage() {
         }
       } catch (e) {
         console.error('Server verification failed:', e);
-        // toast.error('AI verification failed. Please retry.');
       }
 
-      // 4) Optional: refresh votes from BE to sync totals
+      // refresh votes
       try {
         const vResp = await fetch(`${SERVER_BASE}/api/votes/${encodeURIComponent(claimKey)}`, { method: 'GET' });
         if (vResp.ok) {
@@ -540,9 +540,8 @@ export default function ClaimDetailPage() {
         setApiVoteStats(null);
       }
 
-      /* ✅ 5) Finalize payouts if decisive & time ended */
+      // finalize payouts if decisive & time ended
       try {
-        // Prefer freshest AI result we just set
         const av =
           (serverResult?.updated?.aiVerification) ||
           (serverResult?.updatedClaim?.aiVerification) ||
@@ -573,7 +572,7 @@ export default function ClaimDetailPage() {
             },
           }));
 
-          // Refresh votes so winner rewards appear
+          // refresh votes again so rewards appear
           try {
             const vResp2 = await fetch(`${SERVER_BASE}/api/votes/${encodeURIComponent(claimKey)}`);
             if (vResp2.ok) {
@@ -589,7 +588,6 @@ export default function ClaimDetailPage() {
         }
       } catch (e) {
         console.error('Finalize call failed:', e);
-        // toast.error('Finalize failed. Please try again from the claim page.');
       }
     } catch (err) {
       console.error('Finalize error:', err);
@@ -630,10 +628,8 @@ export default function ClaimDetailPage() {
     };
   }, [apiVoteStats, apiVotes, votes]);
 
-  // DON'T early-return. Render skeleton conditionally.
   const loading = !isClient || !claim;
 
-  // Values that require `claim` should be defined only when it exists
   const normalizedEvidence = loading ? [] : normalizeEvidence(claim.evidence);
   const uniqueDomains = loading ? new Set() : new Set(normalizedEvidence.map((e) => e.domain).filter(Boolean));
   const scope = loading
@@ -647,38 +643,38 @@ export default function ClaimDetailPage() {
 
   const votingEnded = !loading && (
     (votingEndsMs && Date.now() >= votingEndsMs) ||
-    ['ended', 'verified', 'flagged'].includes(claim.status)
+    ['ended', 'verified', 'flagged', 'resolved'].includes(claim.status)
   );
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       {loading ? (
-        /* ---------- Skeleton while loading ---------- */
         <div className="animate-pulse space-y-4">
           <div className="h-12 bg-gray-200 rounded w-1/3" />
           <div className="h-64 bg-gray-200 rounded" />
         </div>
       ) : (
-        /* ---------- Main content when claim is loaded ---------- */
         <>
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-4">
               <Badge className="text-base px-3 py-1">{claim.category}</Badge>
-              {claim.status === 'verified' && claim.aiVerdict && (
+
+              {/* ✅ AI-driven outcome badge */}
+              {showAiVerifiedBadge && (
                 <>
-                  {claim.aiVerdict.result === 'Truth' && (
+                  {verdictRaw === 'truth' && (
                     <Badge className="bg-green-100 text-green-800 border-green-200 text-lg px-4 py-2">
                       <CheckCircle className="h-5 w-5 mr-2" />
                       Verified Truth
                     </Badge>
                   )}
-                  {claim.aiVerdict.result === 'Fake' && (
+                  {verdictRaw === 'fake' && (
                     <Badge className="bg-red-100 text-red-800 border-red-200 text-lg px-4 py-2">
                       <XCircle className="h-5 w-5 mr-2" />
                       Verified Fake
                     </Badge>
                   )}
-                  {claim.aiVerdict.result === 'Uncertain' && (
+                  {verdictRaw === 'uncertain' && (
                     <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-lg px-4 py-2">
                       <AlertCircle className="h-5 w-5 mr-2" />
                       Uncertain
@@ -686,17 +682,16 @@ export default function ClaimDetailPage() {
                   )}
                 </>
               )}
-              {claim.status === 'voting' && (
-                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-lg px-4 py-2">
-                  <Clock className="h-5 w-5 mr-2" />
-                  Voting Active
-                </Badge>
-              )}
-              {claim.status === 'flagged' && (
-                <Badge className="bg-red-100 text-red-800 border-red-200 text-lg px-4 py-2">
-                  <XCircle className="h-5 w-5 mr-2" />
-                  Flagged
-                </Badge>
+
+              {/* ✅ Claim Reward button next to the badge (driven by AI verdict + payout availability) */}
+              {canClaimNow && (
+                <div className="ml-auto">
+                  <ClaimRewardButton
+                    claimId={claim.claimId || claim.id}
+                    className="mt-1"
+                    size="sm"
+                  />
+                </div>
               )}
             </div>
 
@@ -917,7 +912,7 @@ export default function ClaimDetailPage() {
               </CardContent>
             </Card>
 
-            {/* --- Your Vote (shows your vote + evidence) --- */}
+            {/* --- Your Vote --- */}
             <Card>
               <CardHeader>
                 <CardTitle className="dark:text-white">Your Vote</CardTitle>
@@ -999,6 +994,15 @@ export default function ClaimDetailPage() {
                     <Scale className="h-6 w-6 text-green-600" />
                     Weighted Resolution
                   </CardTitle>
+
+                  {/* (Optional) also show Claim button here */}
+                  {canClaimNow && (
+                    <ClaimRewardButton
+                      claimId={claim.claimId || claim.id}
+                      className="mt-2"
+                      size="sm"
+                    />
+                  )}
                 </CardHeader>
 
                 {(() => {
@@ -1086,7 +1090,7 @@ export default function ClaimDetailPage() {
               </Alert>
             )}
 
-            {/* --- Recent votes (prefer API votes) --- */}
+            {/* --- Recent votes --- */}
             {(apiVotes.length ? apiVotes : votes).length > 0 && (
               <Card>
                 <CardHeader>
