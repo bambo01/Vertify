@@ -19,12 +19,28 @@ const ENV_FN_CLAIMS = process.env.NEXT_PUBLIC_FN_CLAIMS || 'getClaim';
 const FN_VOTE_PREF  = process.env.NEXT_PUBLIC_VOTE_FN || 'getVote';
 
 // ACTION — force user path to claimReward to avoid owner-only reverts
-// (You can still override with env if you really need to.)
 const FN_CLAIM_PREF = process.env.NEXT_PUBLIC_CLAIM_FN || 'claimReward';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+
+// small debug logger that respects NEXT_PUBLIC_DEBUG
+function dlog(...args) {
+  if (!DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.log('[ClaimRewardButton]', ...args);
+}
+function dwarn(...args) {
+  if (!DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.warn('[ClaimRewardButton][WARN]', ...args);
+}
+function derr(...args) {
+  // Always show errors, but tag them
+  // eslint-disable-next-line no-console
+  console.error('[ClaimRewardButton][ERROR]', ...args);
+}
 
 function toOnchainKeyBytes32(id) {
   if (isHex(id) && id.length === 66) return id; // already bytes32
@@ -145,6 +161,8 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
 
       try {
         const abi = TruthChainCore?.abi ?? [];
+        const allFns = listAbiFns(abi);
+        dlog('ABI functions:', allFns);
 
         // Pick getters
         const fnClaims = hasFn(abi, ENV_FN_CLAIMS) ? ENV_FN_CLAIMS
@@ -171,12 +189,11 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
         const voteArg  = idB32_vote  ? idBytes32 : idString;
         const estArg   = idB32_est   ? idBytes32 : idString;
 
-        if (DEBUG) {
-          console.info('[ClaimRewardButton] claimId:', { idString, idBytes32 });
-          console.info('[ClaimRewardButton] fns:', { fnClaims, fnVote, fnEstimate });
-        }
+        dlog('Args:', { claimArgType: idB32_claim ? 'bytes32' : 'string', voteArgType: idB32_vote ? 'bytes32' : 'string', estArgType: idB32_est ? 'bytes32' : 'string' });
+        dlog('Using fns:', { fnClaims, fnVote, fnEstimate });
 
-        const [claimRaw, voteRaw] = await Promise.all([
+        const [chainId, claimRaw, voteRaw] = await Promise.all([
+          publicClient.getChainId?.(),
           publicClient.readContract({ address: CONTRACT_ADDR, abi, functionName: fnClaims, args: [claimArg] }),
           publicClient.readContract({ address: CONTRACT_ADDR, abi, functionName: fnVote,   args: [voteArg, address] }),
         ]);
@@ -201,7 +218,8 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
               args: [estArg, address],
             });
             est = toBig(amt);
-          } catch {
+          } catch (e) {
+            dwarn('estimateReward read failed, falling back to stake-only. Error:', e);
             est = isWinner ? toBig(vote.stake) : 0n;
           }
         } else {
@@ -215,29 +233,64 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
         setEstimateWei(est);
 
         // Eligibility / reasons
+        let why = '';
+        let elig = false;
         if (claim.looksEmpty) {
-          setEligible(false); setReason('Not on-chain (wrong ID/chain or not posted)');
+          elig = false; why = 'Not on-chain (wrong ID/chain or not posted)';
         } else if (!claim.payoutReady) {
-          setEligible(false); setReason('Payout not ready (finalization pending)');
+          elig = false; why = 'Payout not ready (finalization pending)';
         } else if (!hasVote) {
-          setEligible(false); setReason('You did not vote on this claim');
+          elig = false; why = 'You did not vote on this claim';
         } else if (!isWinner) {
-          setEligible(false); setReason('You voted for the losing side');
+          elig = false; why = 'You voted for the losing side';
         } else if (vote.rewarded) {
-          setEligible(false); setReason('Reward already claimed');
+          elig = false; why = 'Reward already claimed';
         } else if (est === 0n) {
-          setEligible(false); setReason('No reward available (estimate is zero)');
+          elig = false; why = 'No reward available (estimate is zero)';
         } else {
-          setEligible(true);  setReason('Eligible to claim');
+          elig = true;  why = 'Eligible to claim';
         }
+        setEligible(elig);
+        setReason(why);
 
+        // One concise debug snapshot
+        const fnUsedAtRead = { fnClaims, fnVote, fnEstimate };
+        const idTypes = {
+          claim: idB32_claim ? 'bytes32' : 'string',
+          vote: idB32_vote ? 'bytes32' : 'string',
+          estimate: idB32_est ? 'bytes32' : 'string',
+        };
+        const account = wallet?.account?.address ?? address ?? 'unknown';
+        const snapshot = {
+          status: claim.statusNum,
+          verdict: claim.verdictNum,
+          payoutReady: claim.payoutReady,
+          winnerSide: chainWinner,
+          voter: vote?.voter,
+          isTrue: vote?.isTrue,
+          rewarded: vote?.rewarded,
+          stakeWei: vote?.stake?.toString?.() ?? '0',
+          weight: vote?.weight?.toString?.() ?? '0',
+          estimateWei: est.toString(),
+          isWinner,
+          eligible: elig,
+          reason: why,
+          functionUsedAtRead: JSON.stringify(fnUsedAtRead),
+          idTypes: JSON.stringify(idTypes),
+          chainId: chainId ?? 'unknown',
+          account,
+          contract: CONTRACT_ADDR ?? 'unset',
+        };
         if (DEBUG) {
-          console.info('[ClaimRewardButton] status/verdict:', { status: claim.statusNum, verdict: claim.verdictNum, payoutReady: claim.payoutReady });
-          console.info('[ClaimRewardButton] vote:', vote);
-          console.info('[ClaimRewardButton] isWinner:', isWinner, 'estimateWei:', est.toString());
+          // eslint-disable-next-line no-console
+          console.groupCollapsed('[ClaimRewardButton] Debug Snapshot');
+          // eslint-disable-next-line no-console
+          console.table(snapshot);
+          // eslint-disable-next-line no-console
+          console.groupEnd();
         }
       } catch (e) {
-        console.error('[ClaimRewardButton] read error:', e);
+        derr('On-chain read failed:', e);
         setEligible(false);
         setReason(e?.shortMessage || e?.message || 'On-chain read failed');
       } finally {
@@ -246,7 +299,7 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
     })();
 
     return () => { mounted = false; };
-  }, [address, claimId, publicClient]);
+  }, [address, claimId, publicClient, wallet?.account?.address]);
 
   const onClaim = async () => {
     if (!wallet || !publicClient) { toast.error('Wallet not ready. Reconnect.'); return; }
@@ -256,18 +309,20 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
       setLoading(true);
       const abi = TruthChainCore?.abi ?? [];
 
-      // Prefer claimReward; if not in ABI, we try distributeRewards (owner-only) last.
+      // Prefer claimReward; if not in ABI, try distributeRewards (owner-only) last.
       const fnClaim =
-        hasFn(abi, FN_CLAIM_PREF)     ? FN_CLAIM_PREF :
-        hasFn(abi, 'claimReward')     ? 'claimReward' :
-        hasFn(abi, 'distributeRewards') ? 'distributeRewards' : null;
+        hasFn(abi, FN_CLAIM_PREF)        ? FN_CLAIM_PREF :
+        hasFn(abi, 'claimReward')        ? 'claimReward' :
+        hasFn(abi, 'distributeRewards')  ? 'distributeRewards' : null;
 
       if (!fnClaim) { toast.error('No claim function in ABI'); setLoading(false); return; }
 
       const idB32_action = wantsBytes32(abi, fnClaim);
       const arg = idB32_action ? toOnchainKeyBytes32(claimId) : String(claimId);
 
-      // Simulate to surface revert reasons (e.g., owner-only)
+      dlog('Attempting claim with:', { fnClaim, argType: idB32_action ? 'bytes32' : 'string', arg });
+
+      // Simulate to surface revert reasons (e.g., owner-only, not ready)
       try {
         await publicClient.simulateContract({
           address: CONTRACT_ADDR,
@@ -277,9 +332,13 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
           account: wallet.account,
         });
       } catch (e) {
-        console.error('[ClaimRewardButton] simulate failed:', e);
-        const msg = e?.shortMessage || e?.message || 'Simulation failed';
-        toast.error('Claim failed', { description: msg });
+        derr('simulateContract failed:', e);
+        // Common: OwnableUnauthorizedAccount when using distributeRewards via user wallet
+        if (e?.message?.includes?.('OwnableUnauthorizedAccount')) {
+          toast.error('Claim failed', { description: 'Owner-only function (distributeRewards). Use claimReward for users.' });
+        } else {
+          toast.error('Claim failed', { description: e?.shortMessage || e?.message || 'Simulation failed' });
+        }
         setLoading(false);
         return;
       }
@@ -293,9 +352,12 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
       });
 
       const txHash = await wallet.writeContract(request);
+      dlog('tx sent:', txHash);
       toast.message('Claiming reward…', { description: txHash });
 
       const rcpt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      dlog('tx receipt:', rcpt);
+
       if (rcpt.status === 'success') {
         toast.success('Reward claimed!');
         setEligible(false);
@@ -304,6 +366,7 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
         toast.error('Claim failed');
       }
     } catch (e) {
+      derr('Transaction failed:', e);
       const msg = e?.shortMessage || e?.message || 'Transaction failed';
       toast.error('Claim failed', { description: msg });
     } finally {

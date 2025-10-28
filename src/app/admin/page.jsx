@@ -6,6 +6,7 @@ import Link from 'next/link';
 
 import AdminGuard from '@/components/admin/AdminGuard';
 import { storage } from '@/lib/storage';
+import AdminFinalizePanel from './AdminFinalizePanel';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +60,10 @@ function Dashboard() {
   const [detailsAddr, setDetailsAddr] = useState(null);
   const [detailsProfile, setDetailsProfile] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  // NEW: Finalize panel dialog state
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizeClaimId, setFinalizeClaimId] = useState(''); // optional prefill
 
   const isMounted = useRef(true);
 
@@ -297,6 +302,11 @@ function Dashboard() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* You can keep or remove this inline panel inside user-details modal */}
+          <div className="mb-8">
+            <AdminFinalizePanel />
+          </div>
+
           {detailsLoading ? (
             <div className="p-6 text-center text-zinc-500 dark:text-zinc-400">Loading…</div>
           ) : !detailsProfile ? (
@@ -507,6 +517,23 @@ function Dashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* NEW: FINALIZE PANEL DIALOG */}
+      <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
+        <DialogContent className="w-[96vw] max-w-[1100px] max-h-[85vh] overflow-y-auto bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
+          <DialogHeader>
+            <DialogTitle>Finalize Claims</DialogTitle>
+            <DialogDescription>Resolve claims and distribute rewards.</DialogDescription>
+          </DialogHeader>
+
+          {/* You can pass a defaultClaimId to prefill */}
+          <AdminFinalizePanel defaultClaimId={finalizeClaimId} />
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setFinalizeOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* PAGE HEADER */}
       <div className="container mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between gap-3">
@@ -538,6 +565,18 @@ function Dashboard() {
             >
               <Zap className="mr-2 h-4 w-4" />
               {autoApprove ? 'Auto-approve: ON' : 'Auto-approve: OFF'}
+            </Button>
+
+            {/* NEW: Finalize button */}
+            <Button
+              size="sm"
+              className="bg-indigo-600 hover:bg-indigo-700"
+              onClick={() => {
+                setFinalizeClaimId(''); // or prefill a known claim id
+                setFinalizeOpen(true);
+              }}
+            >
+              Open Finalize Panel
             </Button>
 
             <Button size="sm" variant="outline" onClick={refresh}>
