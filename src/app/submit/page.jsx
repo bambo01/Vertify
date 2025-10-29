@@ -218,7 +218,7 @@ export default function SubmitPage() {
       });
 
       // Optional: navigate
-      // router.push(`/claim/${claimId}`);
+       router.push(`/claim/${claimId}`);
     } catch (err) {
       console.error(err);
       toast.error(err?.message || 'Submission failed');

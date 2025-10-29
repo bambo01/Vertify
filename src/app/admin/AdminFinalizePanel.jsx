@@ -247,166 +247,168 @@ export default function AdminFinalizePanel({ defaultClaimId = '' }) {
 
   // ── UI ───────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
-      {/* FINALIZE CONTROLS */}
-      <div className="rounded-xl border p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Admin: Finalize Claim</h3>
-          <div className="flex items-center gap-2">
-            {owner && <Badge variant="outline">Owner: {owner.slice(0,6)}…{owner.slice(-4)}</Badge>}
-            <Badge variant={isAdmin ? 'default' : 'secondary'}>
-              {isAdmin ? 'Authorized' : 'Not Authorized'}
-            </Badge>
-          </div>
-        </div>
-
-        <div className="grid gap-2">
-          <Input value={claimId} onChange={(e)=>setClaimId(e.target.value)} placeholder="Claim ID (string or 0x… bytes32)" />
-
-          {resolveNeedsSecondParam && resolveSecondIsUint && (
-            <div className="flex items-center gap-3">
-              <div className="text-sm font-medium">Verdict:</div>
-              <Button type="button" variant={verdict === 1 ? 'default' : 'outline'} onClick={()=>setVerdict(1)} size="sm">1 • truth</Button>
-              <Button type="button" variant={verdict === 2 ? 'default' : 'outline'} onClick={()=>setVerdict(2)} size="sm">2 • fake</Button>
-            </div>
-          )}
-
-          {(showSecondFieldForResolve || showSecondFieldForDist) && (
-            <Input
-              value={secondParamText}
-              onChange={(e)=>setSecondParamText(e.target.value)}
-              placeholder={
-                showSecondFieldForResolve
-                  ? `Second param for resolveClaim (${resolveInputs[1]?.type})`
-                  : `Second param for distributeRewards (${distributeInputs[1]?.type})`
-              }
-            />
-          )}
-
-          <div className="flex gap-2">
-            <Button
-              disabled={!isAdmin || !canResolve || busy || (resolveNeedsSecondParam && !resolveSecondIsUint && !secondParamText)}
-              onClick={async () => {
-                setBusy(true);
-                const ok = await runTx('resolveClaim', claimId);
-                setBusy(false);
-                if (ok) refreshClaims();
-              }}
-              className="bg-indigo-600 hover:bg-indigo-700"
-            >
-              {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Resolving…</> : 'Resolve'}
-            </Button>
-
-            <Button
-              disabled={!isAdmin || !canDistribute || busy || (distNeedsSecondParam && !distSecondIsUint && !secondParamText)}
-              onClick={async () => {
-                setBusy(true);
-                const ok = await runTx('distributeRewards', claimId);
-                setBusy(false);
-                if (ok) refreshClaims();
-              }}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Distributing…</> : 'Distribute'}
-            </Button>
-          </div>
-        </div>
-
-        <div className="text-sm text-muted-foreground">
-          Status: <b>{status}</b> • Verdict: <b>{verdictOnChain}</b> • Payout Ready: <b>{String(payoutReady)}</b>
-        </div>
-
-        <div className="text-sm">
-          <span className="mr-2">Functions:</span>
-          {canResolve ? <Badge className="mr-1">resolveClaim</Badge> : <Badge variant="secondary" className="mr-1">resolveClaim (missing)</Badge>}
-          {canDistribute ? <Badge>distributeRewards</Badge> : <Badge variant="secondary">distributeRewards (missing)</Badge>}
-        </div>
-      </div>
-
-      {/* CLAIMS INVENTORY + AUTO DISTRIBUTION */}
-      <div className="rounded-xl border p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">Open Claims</h3>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={refreshClaims} disabled={loadingClaims}>
-              {loadingClaims ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Refreshing…</> : 'Refresh'}
-            </Button>
-            <Button
-              size="sm"
-              variant={autoDistrib ? 'default' : 'outline'}
-              onClick={() => setAutoDistrib(v => !v)}
-              disabled={!isAdmin || !canDistribute}
-              title="If ON, will distribute rewards automatically for payout-ready claims."
-            >
-              {autoDistrib ? 'Auto-Distribute: ON' : 'Auto-Distribute: OFF'}
-            </Button>
-          </div>
-        </div>
-
-        {claims.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No claims found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 border-b bg-zinc-50 dark:bg-zinc-900/40">
-                <tr>
-                  <th className="py-2 pr-3 text-left">Claim ID</th>
-                  <th className="py-2 pr-3 text-left">Status</th>
-                  <th className="py-2 pr-3 text-left">Verdict</th>
-                  <th className="py-2 pr-3 text-left">Payout Ready</th>
-                  <th className="py-2 pr-3 text-left">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {claims.map((c) => {
-                  const short = c.id.length > 18 ? `${c.id.slice(0,10)}…${c.id.slice(-6)}` : c.id;
-                  const verdictTxt = c.verdict === 1 ? 'truth' : c.verdict === 2 ? 'fake' : '—';
-                  return (
-                    <tr key={c.id} className="border-b last:border-0">
-                      <td className="py-2 pr-3 font-mono">{short}</td>
-                      <td className="py-2 pr-3">{c.status}</td>
-                      <td className="py-2 pr-3">{verdictTxt}</td>
-                      <td className="py-2 pr-3">
-                        <Badge variant={c.payoutReady ? 'default' : 'secondary'}>
-                          {String(c.payoutReady)}
-                        </Badge>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <div className="flex flex-wrap gap-2">
-                          {canResolve && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!isAdmin}
-                              onClick={() => setClaimId(c.id)}
-                              title="Load this claim into the finalize form above."
-                            >
-                              Resolve…
-                            </Button>
-                          )}
-                          {canDistribute && (
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                              disabled={!isAdmin || !c.payoutReady}
-                              onClick={async () => {
-                                const ok = await runTx('distributeRewards', c.id);
-                                if (ok) refreshClaims();
-                              }}
-                            >
-                              Distribute
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+   <div className="space-y-6 w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+  {/* FINALIZE CONTROLS */}
+  <div className="rounded-xl border p-4 sm:p-6 lg:p-8 space-y-3">
+    <div className="flex items-center justify-between">
+      <h3 className="font-semibold">Admin: Finalize Claim</h3>
+      <div className="flex items-center gap-2">
+        {owner && <Badge variant="outline">Owner: {owner.slice(0,6)}…{owner.slice(-4)}</Badge>}
+        <Badge variant={isAdmin ? 'default' : 'secondary'}>
+          {isAdmin ? 'Authorized' : 'Not Authorized'}
+        </Badge>
       </div>
     </div>
+
+    <div className="grid gap-2">
+      <Input value={claimId} onChange={(e)=>setClaimId(e.target.value)} placeholder="Claim ID (string or 0x… bytes32)" />
+
+      {resolveNeedsSecondParam && resolveSecondIsUint && (
+        <div className="flex items-center gap-3">
+          <div className="text-sm font-medium">Verdict:</div>
+          <Button type="button" variant={verdict === 1 ? 'default' : 'outline'} onClick={()=>setVerdict(1)} size="sm">1 • truth</Button>
+          <Button type="button" variant={verdict === 2 ? 'default' : 'outline'} onClick={()=>setVerdict(2)} size="sm">2 • fake</Button>
+        </div>
+      )}
+
+      {(showSecondFieldForResolve || showSecondFieldForDist) && (
+        <Input
+          value={secondParamText}
+          onChange={(e)=>setSecondParamText(e.target.value)}
+          placeholder={
+            showSecondFieldForResolve
+              ? `Second param for resolveClaim (${resolveInputs[1]?.type})`
+              : `Second param for distributeRewards (${distributeInputs[1]?.type})`
+          }
+        />
+      )}
+
+      <div className="flex gap-2">
+        <Button
+          disabled={!isAdmin || !canResolve || busy || (resolveNeedsSecondParam && !resolveSecondIsUint && !secondParamText)}
+          onClick={async () => {
+            setBusy(true);
+            const ok = await runTx('resolveClaim', claimId);
+            setBusy(false);
+            if (ok) refreshClaims();
+          }}
+          className="bg-indigo-600 hover:bg-indigo-700"
+        >
+          {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Resolving…</> : 'Resolve'}
+        </Button>
+
+        <Button
+          disabled={!isAdmin || !canDistribute || busy || (distNeedsSecondParam && !distSecondIsUint && !secondParamText)}
+          onClick={async () => {
+            setBusy(true);
+            const ok = await runTx('distributeRewards', claimId);
+            setBusy(false);
+            if (ok) refreshClaims();
+          }}
+          className="bg-emerald-600 hover:bg-emerald-700"
+        >
+          {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Distributing…</> : 'Distribute'}
+        </Button>
+      </div>
+    </div>
+
+    <div className="text-sm text-muted-foreground">
+      Status: <b>{status}</b> • Verdict: <b>{verdictOnChain}</b> • Payout Ready: <b>{String(payoutReady)}</b>
+    </div>
+
+    <div className="text-sm">
+      <span className="mr-2">Functions:</span>
+      {canResolve ? <Badge className="mr-1">resolveClaim</Badge> : <Badge variant="secondary" className="mr-1">resolveClaim (missing)</Badge>}
+      {canDistribute ? <Badge>distributeRewards</Badge> : <Badge variant="secondary">distributeRewards (missing)</Badge>}
+    </div>
+  </div>
+
+  {/* CLAIMS INVENTORY + AUTO DISTRIBUTION */}
+  <div className="rounded-xl border p-4 sm:p-6 lg:p-8">
+    <div className="mb-3 flex items-center justify-between">
+      <h3 className="font-semibold">Open Claims</h3>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={refreshClaims} disabled={loadingClaims}>
+          {loadingClaims ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Refreshing…</> : 'Refresh'}
+        </Button>
+        <Button
+          size="sm"
+          variant={autoDistrib ? 'default' : 'outline'}
+          onClick={() => setAutoDistrib(v => !v)}
+          disabled={!isAdmin || !canDistribute}
+          title="If ON, will distribute rewards automatically for payout-ready claims."
+        >
+          {autoDistrib ? 'Auto-Distribute: ON' : 'Auto-Distribute: OFF'}
+        </Button>
+      </div>
+    </div>
+
+    {claims.length === 0 ? (
+      <div className="text-sm text-muted-foreground">No claims found.</div>
+    ) : (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 border-b bg-zinc-50 dark:bg-zinc-900/40">
+            <tr>
+              <th className="py-2 pr-3 text-left">Claim ID</th>
+              <th className="py-2 pr-3 text-left">Status</th>
+              <th className="py-2 pr-3 text-left">Verdict</th>
+              <th className="py-2 pr-3 text-left">Payout Ready</th>
+              <th className="py-2 pr-3 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {claims.map((c) => {
+              const short = c.id.length > 18 ? `${c.id.slice(0,10)}…${c.id.slice(-6)}` : c.id;
+              const verdictTxt = c.verdict === 1 ? 'truth' : c.verdict === 2 ? 'fake' : '—';
+              return (
+                <tr key={c.id} className="border-b last:border-0">
+                  <td className="py-2 pr-3 font-mono">{short}</td>
+                  <td className="py-2 pr-3">{c.status}</td>
+                  <td className="py-2 pr-3">{verdictTxt}</td>
+                  <td className="py-2 pr-3">
+                    <Badge variant={c.payoutReady ? 'default' : 'secondary'}>
+                      {String(c.payoutReady)}
+                    </Badge>
+                  </td>
+                  <td className="py-2 pr-3">
+                    <div className="flex flex-wrap gap-2">
+                      {canResolve && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!isAdmin}
+                          onClick={() => setClaimId(c.id)}
+                          title="Load this claim into the finalize form above."
+                        >
+                          Resolve…
+                        </Button>
+                      )}
+                      {canDistribute && (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={!isAdmin || !c.payoutReady}
+                          onClick={async () => {
+                            const ok = await runTx('distributeRewards', c.id);
+                            if (ok) refreshClaims();
+                          }}
+                        >
+                          Distribute
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+</div>
+
+
   );
 }

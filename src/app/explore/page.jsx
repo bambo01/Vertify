@@ -1,6 +1,7 @@
+// app/explore/page.jsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { storage } from '@/lib/storage';
 import { CATEGORIES } from '@/lib/constants';
 import { ClaimCard } from '@/components/claim-card';
@@ -24,30 +25,37 @@ export default function ExplorePage() {
     setIsClient(true);
     const loadClaims = async () => {
       const allClaims = await storage.getClaims();
-      setClaims(allClaims);
+      setClaims(allClaims || []);
     };
     loadClaims();
   }, []);
 
-  const filterClaims = (status) => {
-    return claims
-      .filter((claim) => status.includes(claim.status))
+  // 🔒 Exclude archived claims globally from any UI or counts
+  const visibleClaims = useMemo(
+    () => (Array.isArray(claims) ? claims.filter(c => c?.status !== 'archived') : []),
+    [claims]
+  );
+
+  const filterClaims = (allowedStatuses) => {
+    return visibleClaims
+      .filter((claim) => allowedStatuses.includes(claim.status))
       .filter((claim) => selectedCategory === 'all' || claim.category === selectedCategory)
       .filter((claim) =>
-        searchQuery === '' ||
-        claim.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        claim.summary.toLowerCase().includes(searchQuery.toLowerCase())
+        !searchQuery
+          ? true
+          : claim.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            claim.summary.toLowerCase().includes(searchQuery.toLowerCase())
       )
-      .sort((a, b) => b.createdAt - a.createdAt);
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   };
 
   const votingClaims = filterClaims(['voting']);
-  const endedClaims = filterClaims(['ended', 'verified', 'flagged']);
-  console.log('Ended claims: ', endedClaims);
+  const endedClaims = filterClaims(['ended', 'verified', 'flagged', 'resolved']);
 
+  // Counts should also exclude archived claims
   const getCategoryCount = (category) => {
-    if (category === 'all') return claims.length;
-    return claims.filter((claim) => claim.category === category).length;
+    if (category === 'all') return visibleClaims.length;
+    return visibleClaims.filter((claim) => claim.category === category).length;
   };
 
   if (!isClient) {
@@ -133,64 +141,60 @@ export default function ExplorePage() {
       </FadeInWhenVisible>
 
       {/* Tabs */}
-      
-        <Tabs defaultValue="voting" className="w-full">
-          <FadeInWhenVisible y={8} once={false}>
-            <TabsList className="grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="voting">
-                Voting ({votingClaims.length})
-              </TabsTrigger>
-              <TabsTrigger value="ended">
-                Ended ({endedClaims.length})
-              </TabsTrigger>
-            </TabsList>
-          </FadeInWhenVisible>
+      <Tabs defaultValue="voting" className="w-full">
+        <FadeInWhenVisible y={8} once={false}>
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="voting">
+              Voting ({votingClaims.length})
+            </TabsTrigger>
+            <TabsTrigger value="ended">
+              Ended ({endedClaims.length})
+            </TabsTrigger>
+          </TabsList>
+        </FadeInWhenVisible>
 
-          {/* Voting tab */}
-          <TabsContent value="voting" className="mt-6">
-            {votingClaims.length === 0 ? (
-              <FadeInWhenVisible once={false}>
-                <div className="text-center py-12 text-gray-500">
-                  {selectedCategory !== 'all'
-                    ? `No active voting claims in ${selectedCategory} category`
-                    : 'No active voting claims found'}
-                </div>
-              </FadeInWhenVisible>
-            ) : (
-              // ✅ No scroll animation on ClaimCards — render directly
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {votingClaims.map((claim) => (
-                  <div key={claim.id}>
-                    <ClaimCard claim={claim} />
-                  </div>
-                ))}
+        {/* Voting tab */}
+        <TabsContent value="voting" className="mt-6">
+          {votingClaims.length === 0 ? (
+            <FadeInWhenVisible once={false}>
+              <div className="text-center py-12 text-gray-500">
+                {selectedCategory !== 'all'
+                  ? `No active voting claims in ${selectedCategory} category`
+                  : 'No active voting claims found'}
               </div>
-            )}
-          </TabsContent>
+            </FadeInWhenVisible>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {votingClaims.map((claim) => (
+                <div key={claim.id}>
+                  <ClaimCard claim={claim} />
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
 
-          {/* Ended tab */}
-          <TabsContent value="ended" className="mt-6">
-            {endedClaims.length === 0 ? (
-              <FadeInWhenVisible once={false}>
-                <div className="text-center py-12 text-gray-500">
-                  {selectedCategory !== 'all'
-                    ? `No ended claims in ${selectedCategory} category`
-                    : 'No ended claims found'}
-                </div>
-              </FadeInWhenVisible>
-            ) : (
-              // ✅ No scroll animation on ClaimCards — render directly
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {endedClaims.map((claim) => (
-                  <div key={claim.id}>
-                    <ClaimCard claim={claim} />
-                  </div>
-                ))}
+        {/* Ended tab */}
+        <TabsContent value="ended" className="mt-6">
+          {endedClaims.length === 0 ? (
+            <FadeInWhenVisible once={false}>
+              <div className="text-center py-12 text-gray-500">
+                {selectedCategory !== 'all'
+                  ? `No ended claims in ${selectedCategory} category`
+                  : 'No ended claims found'}
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
-      
+            </FadeInWhenVisible>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {endedClaims.map((claim) => (
+                <div key={claim.id}>
+                  <ClaimCard claim={claim} />
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

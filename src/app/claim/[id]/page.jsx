@@ -1,7 +1,7 @@
 // src/app/claim/[id]/page.jsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { storage } from '@/lib/storage';
@@ -159,6 +159,9 @@ export default function ClaimDetailPage() {
   const [voteProfiles, setVoteProfiles] = useState({});
   const [eligibleCount, setEligibleCount] = useState(null);
 
+  // 🔐 guard to ensure we only finalize once automatically
+  const finalizeOnceRef = useRef(false);
+
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -168,23 +171,30 @@ export default function ClaimDetailPage() {
     const loadClaim = async () => {
       const claimId = params.id;
       const loadedClaim = await storage.getClaim(claimId);
-      console.log('my claimId')
       if (loadedClaim) {
         const loadedUser = await storage.getUserProfile(loadedClaim.poster);
-        console.log('Poster Id: ', loadedUser?.displayName);
         setDisplayName(loadedUser?.displayName || '');
         setClaim(loadedClaim);
         const claimVotes = await storage.getVotesForClaim(claimId);
         setVotes(claimVotes);
 
-        if (loadedClaim.status === 'voting') {
-          const vEnd =
-            typeof loadedClaim.votingEndsAt === 'number'
-              ? loadedClaim.votingEndsAt
-              : (Number.isFinite(Date.parse(loadedClaim.votingEndsAt)) ? Date.parse(loadedClaim.votingEndsAt) : 0);
-          if (vEnd && Date.now() >= vEnd) {
-            handleVotingEnd(loadedClaim);
-          }
+        // if it's already ended by time, try to finalize
+        const vEnd =
+          typeof loadedClaim.votingEndsAt === 'number'
+            ? loadedClaim.votingEndsAt
+            : (Number.isFinite(Date.parse(loadedClaim.votingEndsAt)) ? Date.parse(loadedClaim.votingEndsAt) : 0);
+
+        if (
+          vEnd &&
+          Date.now() >= vEnd &&
+          loadedClaim.status === 'voting' &&
+          !finalizeOnceRef.current
+        ) {
+          finalizeOnceRef.current = true;
+          (async () => {
+            try { await handleVotingEnd(loadedClaim); }
+            catch (e) { console.error('auto finalize (on load) failed:', e); }
+          })();
         }
       }
     };
@@ -296,9 +306,26 @@ export default function ClaimDetailPage() {
     return 0;
   }, [claim]);
 
-  // Timer
+  // Timer with auto-finalize + watchdog
   useEffect(() => {
     if (!claim) return;
+
+    const tryFinalize = () => {
+      if (
+        votingEndsMs &&
+        Date.now() >= votingEndsMs &&
+        claim.status === 'voting' &&
+        !finalizeOnceRef.current &&
+        !verifying
+      ) {
+        finalizeOnceRef.current = true;
+        (async () => {
+          try { await handleVotingEnd(claim); }
+          catch (e) { console.error('auto finalize failed:', e); }
+        })();
+      }
+    };
+
     const updateTimer = () => {
       if (!votingEndsMs) {
         setTimeLeft('Voting end time unavailable');
@@ -309,7 +336,7 @@ export default function ClaimDetailPage() {
 
       if (remaining <= 0) {
         setTimeLeft('Voting ended');
-        if (claim.status === 'voting') handleVotingEnd(claim);
+        tryFinalize();
         return;
       }
       const hours = Math.floor(remaining / (1000 * 60 * 60));
@@ -320,11 +347,14 @@ export default function ClaimDetailPage() {
 
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [claim, votingEndsMs]);
+    // watchdog: in case the 1s timer is paused in background
+    const watchdog = setInterval(tryFinalize, 15000);
 
-  // Eligible voters
-  
+    return () => {
+      clearInterval(interval);
+      clearInterval(watchdog);
+    };
+  }, [claim, votingEndsMs, verifying]);
 
   // ---- derive AI verdict (drive UI from AI, not status) ----
   const verdictRaw = useMemo(
@@ -467,8 +497,6 @@ export default function ClaimDetailPage() {
         weightPlan,
       };
 
-      console.log('[AI VERIFY] payload to BE:', aiVerifyPayload);
-
       let serverResult = null;
       try {
         serverResult = await postServerVerification(claimKey, aiVerifyPayload);
@@ -485,8 +513,6 @@ export default function ClaimDetailPage() {
             aiVerdict: aiVerification,
             status: serverResult?.updatedClaim?.status || (c?.status ?? 'verified'),
           }));
-        } else {
-          console.warn('[AI VERIFY] No aiVerification returned from server:', serverResult);
         }
       } catch (e) {
         console.error('Server verification failed:', e);
@@ -647,84 +673,97 @@ export default function ClaimDetailPage() {
   );
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <div className="container mx-auto px-3 sm:px-4 py-8 sm:py-12 max-w-screen-sm sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
       {loading ? (
         <div className="animate-pulse space-y-4">
-          <div className="h-12 bg-gray-200 rounded w-1/3" />
-          <div className="h-64 bg-gray-200 rounded" />
+          <div className="h-10 sm:h-12 bg-gray-200 rounded w-1/2 sm:w-1/3" />
+          <div className="h-48 sm:h-64 bg-gray-200 rounded" />
         </div>
       ) : (
         <>
+          {/* Header */}
           <div className="mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Badge className="text-base px-3 py-1">{claim.category}</Badge>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3">
+              <Badge className="text-sm sm:text-base px-2.5 sm:px-3 py-0.5 sm:py-1">{claim.category}</Badge>
 
               {/* ✅ AI-driven outcome badge */}
               {showAiVerifiedBadge && (
                 <>
                   {verdictRaw === 'truth' && (
-                    <Badge className="bg-green-100 text-green-800 border-green-200 text-lg px-4 py-2">
-                      <CheckCircle className="h-5 w-5 mr-2" />
+                    <Badge className="bg-green-100 text-green-800 border-green-200 text-sm sm:text-base px-3 sm:px-4 py-1 sm:py-2">
+                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
                       Verified Truth
                     </Badge>
                   )}
                   {verdictRaw === 'fake' && (
-                    <Badge className="bg-red-100 text-red-800 border-red-200 text-lg px-4 py-2">
-                      <XCircle className="h-5 w-5 mr-2" />
+                    <Badge className="bg-red-100 text-red-800 border-red-200 text-sm sm:text-base px-3 sm:px-4 py-1 sm:py-2">
+                      <XCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
                       Verified Fake
                     </Badge>
                   )}
                   {verdictRaw === 'uncertain' && (
-                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-lg px-4 py-2">
-                      <AlertCircle className="h-5 w-5 mr-2" />
+                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-sm sm:text-base px-3 sm:px-4 py-1 sm:py-2">
+                      <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2" />
                       Uncertain
                     </Badge>
                   )}
                 </>
               )}
-
-             
             </div>
 
-            <h1 className="text-4xl font-bold mb-4">{claim.title}</h1>
-            <p className="text-gray-700 text-lg mb-4 dark:text-white">{claim.summary}</p>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 break-words">
+              {claim.title}
+            </h1>
+            <p className="text-gray-700 text-sm sm:text-lg mb-4 dark:text-white break-words">
+              {claim.summary}
+            </p>
 
-            <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600">
               <span className="dark:text-white">By: {displayName}</span>
-              <span>•</span>
+              <span className="hidden sm:inline">•</span>
               <span className="dark:text-white">
                 {claim.createdAt ? new Date(claim.createdAt).toLocaleDateString() : ''}
               </span>
             </div>
           </div>
 
-          <div className="grid gap-6 mb-6">
+          <div className="grid gap-4 sm:gap-6 mb-6">
             {/* --- Claim Details --- */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="dark:text-white">Claim Details</CardTitle>
+            <Card fluid constrain>
+              <CardHeader className="p-3 sm:p-5">
+                <CardTitle className="dark:text-white text-base sm:text-lg">Claim Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-3 sm:p-5">
                 {claim.url && (
-                  <div>
+                  <div className="min-w-0">
                     <a
                       href={claim.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-blue-600 hover:underline"
+                      className="flex items-center gap-2 text-blue-600 hover:underline text-sm sm:text-base break-all"
                     >
-                      <ExternalLink className="h-5 w-5" />
-                      View Original Source
+                      <ExternalLink className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+                      <span className="truncate">View Original Source</span>
                     </a>
                   </div>
                 )}
 
                 {claim.txHash && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600 dark:text-white">Transaction Hash:</p>
-                    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded font-mono text-sm">
-                      <span className="truncate flex-1">{claim.txHash}</span>
-                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(claim.txHash || '')}>
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-white">Transaction Hash</p>
+                    <div className="flex items-center bg-gray-50 rounded">
+                      <div className="overflow-x-auto w-full p-2">
+                        <code className="font-mono text-xs sm:text-sm whitespace-nowrap">
+                          {claim.txHash}
+                        </code>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 mr-2"
+                        onClick={() => copyToClipboard(claim.txHash || '')}
+                        aria-label="Copy transaction hash"
+                      >
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
@@ -732,11 +771,21 @@ export default function ClaimDetailPage() {
                 )}
 
                 {claim.ipfsCid && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600 dark:text-white">IPFS CID:</p>
-                    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded font-mono text-sm">
-                      <span className="truncate flex-1">{claim.ipfsCid}</span>
-                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(claim.ipfsCid || '')}>
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-white">IPFS CID</p>
+                    <div className="flex items-center bg-gray-50 rounded">
+                      <div className="overflow-x-auto w-full p-2">
+                        <code className="font-mono text-xs sm:text-sm whitespace-nowrap">
+                          {claim.ipfsCid}
+                        </code>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 mr-2"
+                        onClick={() => copyToClipboard(claim.ipfsCid || '')}
+                        aria-label="Copy IPFS CID"
+                      >
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
@@ -747,43 +796,47 @@ export default function ClaimDetailPage() {
 
             {/* --- Eligibility Scope --- */}
             {scope && !scope.everyone && (
-              <Card className="border-2 border-blue-200 bg-blue-50">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 dark:text-white">
-                    <Lock className="h-5 w-5 text-blue-600 dark:text-white" />
+              <Card fluid constrain className="border-2 border-blue-200 bg-blue-50">
+                <CardHeader className="p-3 sm:p-5">
+                  <CardTitle className="flex items-center gap-2 dark:text-white text-base sm:text-lg">
+                    <Lock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-white" />
                     Voter Eligibility Requirements (Custom Scope)
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 p-3 sm:p-5">
                   <Alert className="bg-white border-blue-200 dark:bg-[#252526] dark:border-gray-800">
-                    <AlertDescription className="text-sm">
+                    <AlertDescription className="text-xs sm:text-sm">
                       This claim has custom voter restrictions. Only users meeting ALL requirements below can vote.
                     </AlertDescription>
                   </Alert>
 
                   {scope.requireCategory && (
-                    <div className="flex items-start gap-2 p-3 bg-white rounded">
-                      <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-sm">Category Badge Required</p>
-                        <p className="text-sm text-gray-600">Must have a {claim.category} category badge</p>
+                    <div className="flex items-start gap-2 p-3 bg-white rounded min-w-0">
+                      <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-xs sm:text-sm">Category Badge Required</p>
+                        <p className="text-xs sm:text-sm text-gray-600">
+                          Must have a <span className="font-medium">{claim.category}</span> category badge
+                        </p>
                       </div>
                     </div>
                   )}
 
                   {(scope.allowedRoles?.length || 0) > 0 && (
-                    <div className="flex items-start gap-2 p-3 bg-white rounded dark:bg-[#252526] dark:border-gray-800">
-                      <Briefcase className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-sm mb-2 dark:text-white">Allowed Roles</p>
-                        <div className="flex flex-wrap gap-2">
+                    <div className="flex items-start gap-2 p-3 bg-white rounded dark:bg-[#252526] dark:border-gray-800 min-w-0">
+                      <Briefcase className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-xs sm:text-sm mb-2 dark:text-white">Allowed Roles</p>
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
                           {scope.allowedRoles.map((role) => (
-                            <Badge key={role} variant="outline" className="text-xs">
+                            <Badge key={role} variant="outline" className="text-[10px] sm:text-xs">
                               {role}
                             </Badge>
                           ))}
                         </div>
-                        <p className="text-xs text-gray-600 mt-1 dark:text-gray-400">Must have at least one of these professional roles</p>
+                        <p className="text-[11px] sm:text-xs text-gray-600 mt-1 dark:text-gray-400">
+                          Must have at least one of these professional roles
+                        </p>
                       </div>
                     </div>
                   )}
@@ -791,35 +844,39 @@ export default function ClaimDetailPage() {
                   {((scope.allowedGeo?.cities?.length || 0) > 0 ||
                     (scope.allowedGeo?.provinces?.length || 0) > 0 ||
                     (scope.allowedGeo?.countries?.length || 0) > 0) && (
-                    <div className="flex items-start gap-2 p-3 bg-white rounded dark:bg-[#252526] dark:border-gray-800">
-                      <MapPin className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-sm mb-2 dark:text-white">Geographic Restriction</p>
+                    <div className="flex items-start gap-2 p-3 bg-white rounded dark:bg-[#252526] dark:border-gray-800 min-w-0">
+                      <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-xs sm:text-sm mb-2 dark:text-white">Geographic Restriction</p>
                         {scope.allowedGeo?.cities?.length > 0 && (
-                          <p className="text-sm text-gray-700 dark:text-gray-400">
+                          <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-400 break-words">
                             City: <strong>{scope.allowedGeo.cities.join(', ')}</strong>
                           </p>
                         )}
                         {scope.allowedGeo?.provinces?.length > 0 && (
-                          <p className="text-sm text-gray-700 dark:text-gray-400">
+                          <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-400 break-words">
                             Province/State: <strong>{scope.allowedGeo.provinces.join(', ')}</strong>
                           </p>
                         )}
                         {scope.allowedGeo?.countries?.length > 0 && (
-                          <p className="text-sm text-gray-700 dark:text-gray-400">
+                          <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-400 break-words">
                             Country: <strong>{scope.allowedGeo.countries.join(', ')}</strong>
                           </p>
                         )}
-                        <p className="text-xs text-gray-600 mt-1 dark:text-gray-400">Must be from the specified location</p>
+                        <p className="text-[11px] sm:text-xs text-gray-600 mt-1 dark:text-gray-400">
+                          Must be from the specified location
+                        </p>
                       </div>
                     </div>
                   )}
 
-                  <div className="p-3 bg-green-50 rounded border border-green-200">
-                    <p className="text-sm font-semibold text-green-900">
+                  <div className="p-3 sm:p-3.5 bg-green-50 rounded border border-green-200">
+                    <p className="text-xs sm:text-sm font-semibold text-green-900">
                       Eligible Voters: {eligibleCount ?? '—'}
                     </p>
-                    <p className="text-xs text-green-700">Current registered users who meet all requirements</p>
+                    <p className="text-[11px] sm:text-xs text-green-700">
+                      Current registered users who meet all requirements
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -827,34 +884,40 @@ export default function ClaimDetailPage() {
 
             {/* --- Evidence list (all) --- */}
             {normalizedEvidence.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <LinkIcon className="h-5 w-5" />
-                    Evidence Provided ({normalizedEvidence.length} sources, {uniqueDomains.size} unique domains)
+              <Card fluid constrain>
+                <CardHeader className="p-3 sm:p-5">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <LinkIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <span className="truncate">
+                      Evidence Provided ({normalizedEvidence.length} sources, {uniqueDomains.size} unique domains)
+                    </span>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
+                <CardContent className="p-3 sm:p-5">
+                  <div className="space-y-1.5 sm:space-y-2">
                     {normalizedEvidence.slice(0, 10).map((ev, index) => (
                       <a
                         key={`${ev.url}-${index}`}
                         href={ev.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-2 p-2 sm:p-2.5 bg-gray-50 rounded hover:bg-gray-100 transition-colors min-w-0"
                       >
                         <ExternalLink className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                        <span className="text-sm text-blue-600 truncate flex-1">{ev.domain || ev.url}</span>
+                        <span className="text-xs sm:text-sm text-blue-600 truncate break-all flex-1">
+                          {ev.domain || ev.url}
+                        </span>
                         {typeof ev.qualityScore === 'number' && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0">
                             Score: {ev.qualityScore.toFixed(0)}
                           </Badge>
                         )}
                       </a>
                     ))}
                     {normalizedEvidence.length > 10 && (
-                      <p className="text-sm text-gray-500 text-center">+ {normalizedEvidence.length - 10} more sources</p>
+                      <p className="text-xs sm:text-sm text-gray-500 text-center">
+                        + {normalizedEvidence.length - 10} more sources
+                      </p>
                     )}
                   </div>
                 </CardContent>
@@ -862,23 +925,23 @@ export default function ClaimDetailPage() {
             )}
 
             {/* --- Voting results --- */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 dark:text-white">
-                  <Users className="h-5 w-5" />
-                  Voting Results
+            <Card fluid constrain>
+              <CardHeader className="p-3 sm:p-5">
+                <CardTitle className="flex items-center gap-2 dark:text-white text-base sm:text-lg">
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="truncate">Voting Results</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-3 sm:p-5">
                 {claim.status === 'voting' && (
-                  <div className="flex items-center gap-2 text-blue-600 font-semibold">
-                    <Clock className="h-5 w-5" />
-                    Time remaining: {timeLeft}
+                  <div className="flex flex-wrap items-center gap-2 text-blue-600 font-semibold text-sm">
+                    <Clock className="h-4 w-4" />
+                    <span className="truncate">Time remaining: {timeLeft}</span>
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex flex-wrap justify-between gap-2 text-xs sm:text-sm">
                     <span className="text-green-700 font-medium">
                       Truth: {truthVotesNum} votes ({truthStakeNum.toFixed(3)} ETH)
                     </span>
@@ -886,16 +949,16 @@ export default function ClaimDetailPage() {
                       Fake: {fakeVotesNum} votes ({fakeStakeNum.toFixed(3)} ETH)
                     </span>
                   </div>
-                  <Progress value={truthPercentage} className="h-3" />
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <Progress value={truthPercentage} className="h-2 sm:h-3" />
+                  <div className="flex justify-between text-[11px] sm:text-xs text-gray-500">
                     <span>{truthPercentage.toFixed(1)}% Truth</span>
                     <span>{(100 - truthPercentage).toFixed(1)}% Fake</span>
                   </div>
                 </div>
 
                 {claim.status === 'voting' && (
-                  <Link href={`/vote/${claim.id}`}>
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700" size="lg">
+                  <Link href={`/vote/${claim.id}`} className="block">
+                    <Button className="w-full bg-blue-600 hover:bg-blue-700" size="sm sm:lg">
                       Vote Now
                     </Button>
                   </Link>
@@ -904,22 +967,22 @@ export default function ClaimDetailPage() {
             </Card>
 
             {/* --- Your Vote --- */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="dark:text-white">Your Vote</CardTitle>
+            <Card fluid constrain>
+              <CardHeader className="p-3 sm:p-5">
+                <CardTitle className="dark:text-white text-base sm:text-lg">Your Vote</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-3 p-3 sm:p-5">
                 {!address && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                     Connect your wallet to see your vote for this claim.
                   </p>
                 )}
 
                 {address && !myVote && claim.status === 'voting' && (
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">You haven’t voted yet.</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">You haven’t voted yet.</p>
                     <Link href={`/vote/${claim.id}`}>
-                      <Button className="bg-blue-600 hover:bg-blue-700">Vote Now</Button>
+                      <Button className="bg-blue-600 hover:bg-blue-700" size="sm sm:default">Vote Now</Button>
                     </Link>
                   </div>
                 )}
@@ -947,7 +1010,7 @@ export default function ClaimDetailPage() {
 
                     {normalizeVoteEvidence(myVote.evidence).length > 0 ? (
                       <div className="mt-2">
-                        <p className="text-sm font-semibold dark:text-white mb-2">
+                        <p className="text-xs sm:text-sm font-semibold dark:text-white mb-2">
                           Your Evidence ({normalizeVoteEvidence(myVote.evidence).length})
                         </p>
                         <div className="space-y-2">
@@ -960,17 +1023,17 @@ export default function ClaimDetailPage() {
                                 href={href}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                                className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors min-w-0"
                               >
                                 <ExternalLink className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm text-blue-600 truncate">{text}</span>
+                                <span className="text-xs sm:text-sm text-blue-600 truncate break-all">{text}</span>
                               </a>
                             );
                           })}
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-600 dark:text-gray-400">No evidence attached to your vote.</p>
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">No evidence attached to your vote.</p>
                     )}
                   </>
                 )}
@@ -979,11 +1042,11 @@ export default function ClaimDetailPage() {
 
             {/* --- Weighted Resolution (after voting) --- */}
             {votingEnded && (claim?.aiVerification || claim?.aiVerdict) && (
-              <Card className="border-2 border-green-200 bg-green-50">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 dark:text-white">
-                    <Scale className="h-6 w-6 text-green-600" />
-                    Weighted Resolution
+              <Card fluid constrain className="border-2 border-green-200 bg-green-50">
+                <CardHeader className="p-3 sm:p-5">
+                  <CardTitle className="flex items-center gap-2 dark:text-white text-base sm:text-lg">
+                    <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+                    <span className="truncate">Weighted Resolution</span>
                   </CardTitle>
 
                   {/* (Optional) also show Claim button here */}
@@ -1008,10 +1071,10 @@ export default function ClaimDetailPage() {
 
                   const badgeClass =
                     result === 'truth'
-                      ? 'bg-green-600 text-white text-lg px-4 py-2'
+                      ? 'bg-green-600 text-white text-sm sm:text-lg px-3 sm:px-4 py-1.5 sm:py-2'
                       : result === 'fake'
-                      ? 'bg-red-600 text-white text-lg px-4 py-2'
-                      : 'bg-yellow-600 text-white text-lg px-4 py-2';
+                      ? 'bg-red-600 text-white text-sm sm:text-lg px-3 sm:px-4 py-1.5 sm:py-2'
+                      : 'bg-yellow-600 text-white text-sm sm:text-lg px-3 sm:px-4 py-1.5 sm:py-2';
 
                   const label =
                     result === 'truth' ? 'Verified Truth'
@@ -1019,14 +1082,14 @@ export default function ClaimDetailPage() {
                     : 'Uncertain';
 
                   return (
-                    <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-lg font-semibold dark:text-white">Final Outcome:</span>
+                    <CardContent className="space-y-4 p-3 sm:p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm sm:text-lg font-semibold dark:text-white">Final Outcome:</span>
                         <Badge className={badgeClass}>{label}</Badge>
                       </div>
 
                       <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
+                        <div className="flex justify-between text-xs sm:text-sm">
                           <span className="dark:text-white">AI Truth Score:</span>
                           <span className="font-semibold dark:text-white">{score.toFixed(1)}%</span>
                         </div>
@@ -1034,8 +1097,8 @@ export default function ClaimDetailPage() {
                       </div>
 
                       <div className="p-3 bg-white rounded border dark:bg-[#252526]">
-                        <p className="text-sm font-semibold mb-2 dark:text-white">Score Breakdown:</p>
-                        <div className="grid grid-cols-2 gap-2 text-xs dark:text-gray-400">
+                        <p className="text-xs sm:text-sm font-semibold mb-2 dark:text-white">Score Breakdown:</p>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] sm:text-xs dark:text-gray-400">
                           <div>AI Score: {aiScore.toFixed(2)}</div>
                           <div>Evidence Score: {evidenceScore.toFixed(2)}</div>
                           <div>User Credibility Score: {userCredScore.toFixed(2)}</div>
@@ -1045,23 +1108,23 @@ export default function ClaimDetailPage() {
 
                       {av?.reasoning && (
                         <div className="p-3 bg-white rounded border dark:bg-[#252526]">
-                          <p className="text-sm font-semibold mb-2 dark:text-white">Reasoning</p>
-                          <p className="text-sm dark:text-gray-300">{av.reasoning}</p>
+                          <p className="text-xs sm:text-sm font-semibold mb-2 dark:text-white">Reasoning</p>
+                          <p className="text-xs sm:text-sm dark:text-gray-300 break-words">{av.reasoning}</p>
                         </div>
                       )}
                       {Array.isArray(av?.sources) && av.sources.length > 0 && (
                         <div className="p-3 bg-white rounded border dark:bg-[#252526]">
-                          <p className="text-sm font-semibold mb-2 dark:text-white">AI Sources</p>
-                          <ul className="list-disc list-inside text-sm space-y-1">
+                          <p className="text-xs sm:text-sm font-semibold mb-2 dark:text-white">AI Sources</p>
+                          <ul className="list-disc list-inside text-xs sm:text-sm space-y-1 break-words">
                             {av.sources.slice(0, 8).map((s, i) => (
                               <li key={`${s}-${i}`}>
-                                <a className="text-blue-600" href={s} target="_blank" rel="noreferrer">
+                                <a className="text-blue-600 break-all" href={s} target="_blank" rel="noreferrer">
                                   {s}
                                 </a>
                               </li>
                             ))}
                             {av.sources.length > 8 && (
-                              <li className="text-gray-500 text-xs">+{av.sources.length - 8} more…</li>
+                              <li className="text-gray-500 text-[11px] sm:text-xs">+{av.sources.length - 8} more…</li>
                             )}
                           </ul>
                         </div>
@@ -1073,9 +1136,9 @@ export default function ClaimDetailPage() {
             )}
 
             {verifying && (
-              <Alert className="bg-blue-50 border-blue-200 dark:bg-[#252526] flex gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-white" />
-                <AlertDescription className="text-blue-800 dark:text-gray-400">
+              <Alert className="bg-blue-50 border-blue-200 dark:bg-[#252526] flex items-start gap-2">
+                <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 mt-0.5 animate-spin text-blue-600 dark:text-white" />
+                <AlertDescription className="text-blue-800 text-xs sm:text-sm dark:text-gray-400">
                   AI is analyzing this claim with sources and calculating weighted resolution...
                 </AlertDescription>
               </Alert>
@@ -1083,17 +1146,19 @@ export default function ClaimDetailPage() {
 
             {/* --- Recent votes --- */}
             {(apiVotes.length ? apiVotes : votes).length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="dark:text-white">
+              <Card fluid constrain>
+                <CardHeader className="p-3 sm:p-5">
+                  <CardTitle className="dark:text-white text-base sm:text-lg">
                     Recent Votes ({(apiVotes.length ? apiVotes : votes).length})
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-3 sm:p-5">
                   <div className="space-y-2">
                     {(apiVotes.length ? apiVotes : votes).slice(-10).map((vote, i) => {
-                      const profile = voteProfiles[vote.voterAddress];
-                      const badge = profile?.badges?.find?.((b) => b.category === claim.category);
+                      const profile = voteProfiles[vote.voterAddress] || {};
+                      const badge = Array.isArray(profile?.badges)
+                        ? profile.badges.find((b) => b.category === claim.category)
+                        : undefined;
 
                       const key =
                         vote.id ??
@@ -1103,15 +1168,20 @@ export default function ClaimDetailPage() {
                       const isTruth = (vote.position || vote.vote) === 'truth';
 
                       return (
-                        <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                          <div className="flex items-center gap-3">
+                        <div
+                          key={key}
+                          className="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-50 rounded"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
                             {isTruth ? (
-                              <CheckCircle className="h-5 w-5 text-green-600" />
+                              <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
                             ) : (
-                              <XCircle className="h-5 w-5 text-red-600" />
+                              <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
                             )}
-                            <div>
-                              <span className="font-medium">{vote.voter}</span>
+                            <div className="min-w-0">
+                              <span className="font-medium text-sm sm:text-base break-words">
+                                {vote.voter}
+                              </span>
                               {badge && (
                                 <div className="mt-1">
                                   <BadgeDisplay badge={badge} />
@@ -1120,9 +1190,13 @@ export default function ClaimDetailPage() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-sm text-gray-600">{safeNumber(vote.stake, 0).toFixed(3)} ETH</div>
+                            <div className="text-xs sm:text-sm text-gray-600">
+                              {safeNumber(vote.stake, 0).toFixed(3)} ETH
+                            </div>
                             {Array.isArray(vote.evidence) && vote.evidence.length > 0 && (
-                              <div className="text-xs text-gray-500">{vote.evidence.length} sources</div>
+                              <div className="text-[11px] sm:text-xs text-gray-500">
+                                {vote.evidence.length} sources
+                              </div>
                             )}
                           </div>
                         </div>

@@ -272,33 +272,32 @@ export function ClaimCard({ claim }) {
 
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
-      <CardHeader>
+    <Card className="h-full flex flex-col hover:shadow-lg transition-shadow">
+      <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={getCategoryColor(category)}>{category}</Badge>
             {getStatusBadge()}
-
             {status === 'voting' && hasVoted && (
-              <Badge variant="outline" className="border-green-300 text-green-700">
-                You voted
-              </Badge>
+              <Badge variant="outline" className="border-green-300 text-green-700">You voted</Badge>
             )}
-
             {status === 'voting' && totalVotes > 0 && (
-              truthPercentage >= 50 ? (
-                <Badge className="bg-green-50 text-green-700 border-green-200">Leaning Truth</Badge>
-              ) : (
-                <Badge className="bg-red-50 text-red-700 border-red-200">Leaning Fake</Badge>
-              )
+              truthPercentage >= 50
+                ? <Badge className="bg-green-50 text-green-700 border-green-200">Leaning Truth</Badge>
+                : <Badge className="bg-red-50 text-red-700 border-red-200">Leaning Fake</Badge>
             )}
           </div>
         </div>
-        <h3 className="text-lg font-semibold line-clamp-2 mb-2 dark:text-white">{title}</h3>
-        <p className="text-sm text-gray-600 line-clamp-2 dark:text-gray-400">{summary}</p>
+
+        {/* Title + Summary block */}
+        <div>
+          <h3 className="text-lg font-semibold line-clamp-2 mb-2 dark:text-white">{title}</h3>
+          <p className="text-sm text-gray-600 line-clamp-2 dark:text-gray-400">{summary}</p>
+        </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      {/* This grows to take remaining space so all cards match height */}
+      <CardContent className="flex-1 flex flex-col gap-4">
         <a
           href={url}
           target="_blank"
@@ -352,33 +351,24 @@ export function ClaimCard({ claim }) {
 
         {resolution && (
           <div className="p-3 bg-green-50 rounded-lg border border-green-200 dark:bg-[#252526] dark:border-gray-50/10">
-            <div className={`text-sm font-semibold mb-1 flex gap-2`}>
-                Resolution: 
-                <h1 className={`${resolutionColor}`}>{resolution.result ?? '—'}</h1>
-              </div>
-
+            <div className="text-sm font-semibold mb-1 flex gap-2">
+              Resolution: <span className={resolutionColor}>{resolution.result ?? '—'}</span>
+            </div>
             <div className="text-xs text-gray-700 dark:text-gray-400">
-              Weighted Score:{' '}
-              {Number.isFinite(resolution?.finalScore)
-                ? (resolution?.finalScore) + '%'
-                : '—'}
+              Weighted Score: {Number.isFinite(resolution?.finalScore) ? `${resolution?.finalScore}%` : '—'}
             </div>
           </div>
         )}
       </CardContent>
 
-      <CardFooter className="gap-2">
+      {/* Push footer to bottom on all cards */}
+      <CardFooter className="mt-auto gap-2">
         <Link href={`/claim/${claimId ?? ''}`} className="flex-1">
-          <Button className="w-full" variant="outline">
-            View Details
-          </Button>
+          <Button className="w-full" variant="outline">View Details</Button>
         </Link>
-
         {status === 'voting' && !hasVoted && (
           <Link href={`/vote/${claimId ?? ''}`} className="flex-1">
-            <Button className="w-full" variant="outline">
-              Vote Now
-            </Button>
+            <Button className="w-full" variant="outline">Vote Now</Button>
           </Link>
         )}
       </CardFooter>
