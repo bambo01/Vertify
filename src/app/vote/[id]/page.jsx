@@ -503,7 +503,7 @@ export default function VotePage() {
                   </AlertDescription>
                 </Alert>
 
-                <div className="p-4 bg-blue-50 rounded-lg dark:bg-[#252526]">
+                {/*<div className="p-4 bg-blue-50 rounded-lg dark:bg-[#252526]">
                   <h4 className="font-semibold mb-2 text-sm sm:text-base dark:text-white">Current Votes</h4>
                   <div className="flex flex-col sm:flex-row justify-between gap-2">
                     <Badge className="bg-green-100 text-green-800 text-xs sm:text-sm">
@@ -513,7 +513,7 @@ export default function VotePage() {
                       Fake: {claim.fakeVotes ?? 0} votes ({(claim.fakeStake ?? 0).toFixed(3)} ETH)
                     </Badge>
                   </div>
-                </div>
+                </div>*/}
 
                 <Button
                   className="w-full bg-blue-600 hover:bg-blue-700"
