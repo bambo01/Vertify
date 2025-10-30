@@ -887,8 +887,8 @@ export default function ClaimDetailPage() {
               <Card fluid constrain>
                 <CardHeader className="p-3 sm:p-5">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                    <LinkIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                    <span className="truncate">
+                    <LinkIcon className="h-4 w-4 sm:h-5 sm:w-5 dark:text-white" />
+                    <span className="truncate dark:text-white">
                       Evidence Provided ({normalizedEvidence.length} sources, {uniqueDomains.size} unique domains)
                     </span>
                   </CardTitle>
@@ -908,7 +908,7 @@ export default function ClaimDetailPage() {
                           {ev.domain || ev.url}
                         </span>
                         {typeof ev.qualityScore === 'number' && (
-                          <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0">
+                          <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0 dark:text-black">
                             Score: {ev.qualityScore.toFixed(0)}
                           </Badge>
                         )}
@@ -941,7 +941,7 @@ export default function ClaimDetailPage() {
                 )}
 
                 <div className="space-y-2">
-                  <div className="flex flex-wrap justify-between gap-2 text-xs sm:text-sm">
+                  <div className="flex flex-wrap justify-between gap-2 text-xs sm:text-sm dark:text-white">
                     <span className="text-green-700 font-medium">
                       Truth: {truthVotesNum} votes ({truthStakeNum.toFixed(3)} ETH)
                     </span>
@@ -950,7 +950,7 @@ export default function ClaimDetailPage() {
                     </span>
                   </div>
                   <Progress value={truthPercentage} className="h-2 sm:h-3" />
-                  <div className="flex justify-between text-[11px] sm:text-xs text-gray-500">
+                  <div className="flex justify-between text-[11px] sm:text-xs text-gray-500 dark:text-white">
                     <span>{truthPercentage.toFixed(1)}% Truth</span>
                     <span>{(100 - truthPercentage).toFixed(1)}% Fake</span>
                   </div>

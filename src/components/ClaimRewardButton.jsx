@@ -379,7 +379,7 @@ export default function ClaimRewardButton({ claimId, className, size = 'sm' }) {
   return (
     <div className={`flex items-center gap-3 justify-between ${className || ''}`}>
       <div className="text-sm">
-        <div className="font-medium">Est. reward: {estimateEth.toFixed(6)} ETH</div>
+        <div className="font-medium dark:text-white">Est. reward: {estimateEth.toFixed(6)} ETH</div>
         <div className="text-xs text-muted-foreground">(includes stake ~{stakeEth.toFixed(6)} ETH)</div>
 
         {winnerSide && (

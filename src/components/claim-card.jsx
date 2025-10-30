@@ -268,7 +268,7 @@ export function ClaimCard({ claim }) {
     ? 'text-green-600'
     : normPos(resolution?.result) === 'fake'
     ? 'text-red-600'
-    : 'text-gray-600';
+    : 'text-yellow-600';
 
 
   return (
@@ -315,14 +315,14 @@ export function ClaimCard({ claim }) {
             <span className="text-red-700 font-medium">Fake: {fakeVotesNum} votes</span>
           </div>
           <Progress value={truthPercentage} className="h-2" />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-gray-500 dark:text-white">
             <span>{truthPercentage.toFixed(1)}% Truth</span>
             <span>{(100 - truthPercentage).toFixed(1)}% Fake</span>
           </div>
         </div>
 
         {Array.isArray(evidence) && evidence.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-gray-600">
+          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-white">
             <LinkIcon className="h-3 w-3" />
             <span>{evidence.length} evidence sources</span>
           </div>
@@ -351,7 +351,7 @@ export function ClaimCard({ claim }) {
 
         {resolution && (
           <div className="p-3 bg-green-50 rounded-lg border border-green-200 dark:bg-[#252526] dark:border-gray-50/10">
-            <div className="text-sm font-semibold mb-1 flex gap-2">
+            <div className="text-sm font-semibold mb-1 flex gap-2 dark:text-white">
               Resolution: <span className={resolutionColor}>{resolution.result ?? '—'}</span>
             </div>
             <div className="text-xs text-gray-700 dark:text-gray-400">
