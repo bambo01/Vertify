@@ -9,7 +9,6 @@ import { WalletRequired } from "@/components/wallet-connect";
 import { ClaimCard } from "@/components/claim-card";
 
 import { storage } from "@/lib/storage";
-import { BADGE_REQUIREMENTS } from "@/lib/constants";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,7 +29,6 @@ import {
   TrendingUp,
   FileText,
   Vote as VoteIcon,
-  Award,
   Target,
   Zap,
   AlertTriangle,
@@ -42,12 +40,30 @@ import {
 const EXPLORER_BASE =
   process.env.NEXT_PUBLIC_BLOCK_EXPLORER_BASE || "https://sepolia.basescan.org";
 
-// ✅ Default Testing Mode ON
-const TEST_AUTO_APPROVE = true;
+// ---------- client-side rules & helpers ----------
+const DEFAULT_STAKE = 0.01;      // used if a vote has no stake
+const REQUIRED_TRUTH = 0.75;     // 75%
+const REQUIRED_VOTES = 20;
 
-/* -----------------------
-   Simple mount-only fade
------------------------- */
+const stakeOf = (v) => {
+  const s = Number(v?.stake);
+  return Number.isFinite(s) && s > 0 ? s : DEFAULT_STAKE;
+};
+const normSide = (s) => {
+  const v = (s ?? "").toString().trim().toLowerCase();
+  if (v === "truth" || v === "true") return "truth";
+  if (v === "fake" || v === "false") return "fake";
+  return null;
+};
+const userVoteSide = (v) => normSide(v?.position ?? v?.vote);
+const claimVerdictSide = (c) => {
+  // prefer finalVerdict.side, then aiVerification.result, then legacy aiVerdict.result
+  if (c?.finalVerdict?.side != null) return normSide(c.finalVerdict.side);
+  if (c?.aiVerification?.result != null) return normSide(c.aiVerification.result);
+  if (c?.aiVerdict?.result != null) return normSide(c.aiVerdict.result);
+  return null;
+};
+
 function MountFade({ children, delay = 0, className = "" }) {
   const [on, setOn] = useState(false);
   useEffect(() => {
@@ -85,11 +101,9 @@ export default function DashboardPage() {
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
 
-  // countdowns
-  const [autoCheckIn, setAutoCheckIn] = useState(3); // 3s loop (testing)
-  const [estApprovalIn, setEstApprovalIn] = useState(null); // ~10s threshold
-
-  // refs for timers
+  // countdowns (testing)
+  const [autoCheckIn, setAutoCheckIn] = useState(3);
+  const [estApprovalIn, setEstApprovalIn] = useState(null);
   const estTimerRef = useRef(null);
   const autoCheckIntervalRef = useRef(null);
   const autoCheckCountdownRef = useRef(null);
@@ -97,36 +111,25 @@ export default function DashboardPage() {
   // per-category claim spinner
   const [claiming, setClaiming] = useState({});
 
-  const getBadgeProgress = (badge) => {
-    if ((badge.tier || "").toLowerCase() === "expert") {
+  // ----- badge progress using fixed 75% / 20 rule -----
+  const getBadgeProgress = (truthScore, totalVotes, tier) => {
+    if ((tier || "").toLowerCase() === "expert") {
       return {
         nextTier: "Max Level",
         progress: 100,
         requirement: "You are at the highest tier!",
       };
     }
+    const nextTier = (tier || "").toLowerCase() === "silver" ? "Gold" : "Expert";
 
-    const nextTier =
-      (badge.tier || "").toLowerCase() === "silver" ? "Gold" : "Expert";
-    const requirements = BADGE_REQUIREMENTS[nextTier];
-
-    const truthScore = Number(badge.truthScore ?? 0);
-    const totalVotes = Number(badge.totalVotes ?? badge.voteCount ?? 0);
-
-    const scoreProgress = requirements
-      ? (truthScore / requirements.truthScoreMin) * 100
-      : 0;
-    const votesProgress = requirements
-      ? (totalVotes / requirements.minimumVotes) * 100
-      : 0;
+    const scoreProgress = Math.min(100, (Number(truthScore || 0) / REQUIRED_TRUTH) * 100);
+    const votesProgress = Math.min(100, (Number(totalVotes || 0) / REQUIRED_VOTES) * 100);
     const progress = Math.min((scoreProgress + votesProgress) / 2, 100);
 
     return {
       nextTier,
       progress,
-      requirement: requirements
-        ? `Need ${requirements.truthScoreMin * 100}% truth score & ${requirements.minimumVotes} votes`
-        : "Progress data unavailable",
+      requirement: `Need ${(REQUIRED_TRUTH * 100).toFixed(0)}% truth score & ${REQUIRED_VOTES} votes`,
     };
   };
 
@@ -145,49 +148,36 @@ export default function DashboardPage() {
   useEffect(() => {
     setIsClient(true);
     const loadData = async () => {
-      if (address) {
-        const userProfile = await storage.getUserProfile(address);
-        if (!userProfile) {
-          router.push("/register");
-          return;
-        }
-        setProfile(userProfile);
-        setShowPendingModal(
-          (userProfile?.status || "").toLowerCase() === "pending"
-        );
-
-        const claims = await storage.getUserClaims(address);
-        const votes = await storage.getUserVotes(address);
-        setUserClaims(claims);
-        setUserVotes(votes);
+      if (!address) return;
+      const userProfile = await storage.getUserProfile(address);
+      if (!userProfile) {
+        router.push("/register");
+        return;
       }
+      setProfile(userProfile);
+      setShowPendingModal((userProfile?.status || "").toLowerCase() === "pending");
+
+      const claims = await storage.getUserClaims(address);
+      const votes = await storage.getUserVotes(address);
+      setUserClaims(Array.isArray(claims) ? claims : []);
+      setUserVotes(Array.isArray(votes) ? votes : []);
     };
     loadData();
   }, [address, router]);
 
-  // Manage countdowns while the pending modal is open
+  // Manage countdowns in pending modal
   useEffect(() => {
     const clearTimers = () => {
-      if (estTimerRef.current) {
-        clearInterval(estTimerRef.current);
-        estTimerRef.current = null;
-      }
-      if (autoCheckIntervalRef.current) {
-        clearInterval(autoCheckIntervalRef.current);
-        autoCheckIntervalRef.current = null;
-      }
-      if (autoCheckCountdownRef.current) {
-        clearInterval(autoCheckCountdownRef.current);
-        autoCheckCountdownRef.current = null;
-      }
+      if (estTimerRef.current) clearInterval(estTimerRef.current);
+      if (autoCheckIntervalRef.current) clearInterval(autoCheckIntervalRef.current);
+      if (autoCheckCountdownRef.current) clearInterval(autoCheckCountdownRef.current);
+      estTimerRef.current = autoCheckIntervalRef.current = autoCheckCountdownRef.current = null;
     };
-
     if (!showPendingModal) {
       clearTimers();
       return;
     }
 
-    // Estimated approval countdown (to ~10s after registration)
     const updateEstRemaining = () => {
       const t =
         typeof profile?.registeredAt === "number"
@@ -200,13 +190,11 @@ export default function DashboardPage() {
         return;
       }
       const elapsed = Math.floor((Date.now() - t) / 1000);
-      const remain = Math.max(0, 10 - elapsed);
-      setEstApprovalIn(remain);
+      setEstApprovalIn(Math.max(0, 10 - elapsed));
     };
     updateEstRemaining();
     estTimerRef.current = setInterval(updateEstRemaining, 1000);
 
-    // testing: auto-check every 3s + countdown display 3→2→1
     setAutoCheckIn(3);
     autoCheckCountdownRef.current = setInterval(() => {
       setAutoCheckIn((s) => (s && s > 1 ? s - 1 : 3));
@@ -217,58 +205,85 @@ export default function DashboardPage() {
     }, 3000);
 
     return clearTimers;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPendingModal, profile?.registeredAt]);
 
-  useEffect(() => {
-    const calculateCorrect = async () => {
-      let count = 0;
-      for (const vote of userVotes) {
-        const claim = await storage.getClaim(vote.claimId);
-        if (!claim || !claim.aiVerdict) continue;
-
-        const userVotedTruth = vote.vote === "truth";
-        const aiSaysTruth = claim.aiVerdict.result === "Truth";
-        if (userVotedTruth === aiSaysTruth) count++;
-      }
-      setCorrectVotes(count);
-    };
-    calculateCorrect();
-  }, [userVotes]);
-
-  useEffect(() => {
-    const calculateEarnings = async () => {
-      let earnings = 0;
-      for (const vote of userVotes) {
-        const claim = await storage.getClaim(vote.claimId);
-        if (!claim || !claim.aiVerdict) continue;
-
-        const userVotedTruth = vote.vote === "truth";
-        const aiSaysTruth = claim.aiVerdict.result === "Truth";
-        const correct = userVotedTruth === aiSaysTruth;
-
-        const stake = Number(vote.stake ?? 0);
-        earnings += correct ? stake * 1.8 : 0;
-      }
-      setTotalEarnings(earnings);
-    };
-    calculateEarnings();
-  }, [userVotes]);
-
+  // Load all claims referenced by votes (join on claimId)
   useEffect(() => {
     const loadVoteClaims = async () => {
       const claims = {};
-      for (const vote of userVotes) {
-        const claim = await storage.getClaim(vote.claimId);
-        if (claim) claims[vote.claimId] = claim;
+      for (const v of userVotes) {
+        const c = await storage.getClaim(v.claimId);
+        if (c) claims[v.claimId] = c;
       }
       setVoteClaims(claims);
     };
     if (userVotes.length > 0) loadVoteClaims();
+    else setVoteClaims({});
   }, [userVotes]);
 
-  const accuracy =
-    userVotes.length > 0 ? (correctVotes / userVotes.length) * 100 : 0;
+  // ---- master stats derived from votes + claims (client-side) ----
+  const voteStats = useMemo(() => {
+    let total = 0;
+    let correct = 0;
+    let earnings = 0;
+
+    const byCategory = {}; // { [catKey]: { category, total, correct, truthScore, progress, requirementText } }
+
+    for (const v of userVotes) {
+      const claim = voteClaims[v.claimId];
+      const userSide = userVoteSide(v);
+      const verdictSide = claimVerdictSide(claim);
+      if (!userSide || !verdictSide) continue; // skip if missing verdict or vote
+
+      total++;
+      const isCorrect = userSide === verdictSide;
+      if (isCorrect) correct++;
+
+      const st = stakeOf(v);
+      earnings += isCorrect ? st * 1.8 : 0;
+
+      const catName =
+        claim?.category ||
+        v?.categoryBadge ||
+        claim?.metadata?.category ||
+        "Uncategorized";
+      const key = String(catName).toLowerCase();
+
+      if (!byCategory[key]) {
+        byCategory[key] = {
+          category: catName,
+          total: 0,
+          correct: 0,
+          truthScore: 0,
+          progress: 0,
+          requirementText: "",
+        };
+      }
+      byCategory[key].total++;
+      if (isCorrect) byCategory[key].correct++;
+    }
+
+    const accuracy = total ? correct / total : 0;
+
+    // finalize per-category with 75% / 20 rule
+    for (const k of Object.keys(byCategory)) {
+      const cs = byCategory[k];
+      cs.truthScore = cs.total ? cs.correct / cs.total : 0;
+
+      const scoreProgress = Math.min(100, (cs.truthScore / REQUIRED_TRUTH) * 100);
+      const votesProgress = Math.min(100, (cs.total / REQUIRED_VOTES) * 100);
+      cs.progress = Math.min((scoreProgress + votesProgress) / 2, 100);
+      cs.requirementText = `Need ${(REQUIRED_TRUTH * 100).toFixed(0)}% truth score & ${REQUIRED_VOTES} votes`;
+    }
+
+    return { total, correct, accuracy, earnings, byCategory };
+  }, [userVotes, voteClaims]);
+
+  // keep KPI cards in sync
+  useEffect(() => {
+    setCorrectVotes(voteStats.correct);
+    setTotalEarnings(voteStats.earnings);
+  }, [voteStats.correct, voteStats.earnings]);
 
   // ---------- categories to claim ----------
   const badgesByCategory = useMemo(() => {
@@ -282,32 +297,23 @@ export default function DashboardPage() {
   const normalizedCategories = useMemo(() => {
     const cats = Array.isArray(profile?.categories) ? profile.categories : [];
     return cats.map((c) =>
-      typeof c === "string"
-        ? { category: c, tier: "silver", status: "pending" }
-        : c
+      typeof c === "string" ? { category: c, tier: "silver", status: "pending" } : c
     );
   }, [profile]);
 
   const claimableCategories = useMemo(() => {
-    return normalizedCategories.filter((c) => {
-      const key = String(c.category).toLowerCase();
-      return !badgesByCategory.has(key); // no minted badge yet
-    });
+    return normalizedCategories.filter((c) => !badgesByCategory.has(String(c.category).toLowerCase()));
   }, [normalizedCategories, badgesByCategory]);
 
-  const canClaimNow = () =>
-    (profile?.status || "").toLowerCase() === "approved";
+  const canClaimNow = () => (profile?.status || "").toLowerCase() === "approved";
 
-  // ---------- Claim flow: mark → server mint → finalize ----------
   const claimBadge = async (catName) => {
     if (!address) return;
     try {
       setClaiming((s) => ({ ...s, [catName]: true }));
 
-      // 1) Mark DB category as claim_requested
       await storage.requestCategoryClaim(address, catName);
 
-      // 2) Ask server to mint (owner key; idempotent)
       const res = await fetch("/api/mint-badge", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -316,7 +322,6 @@ export default function DashboardPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Mint failed");
 
-      // 3) Persist badge + flip category to minted (saves tokenId & txHash)
       await storage.finalizeCategoryBadgeMint(address, {
         category: catName,
         tokenId: json.tokenId,
@@ -333,8 +338,7 @@ export default function DashboardPage() {
               description: "View on Basescan",
               action: {
                 label: "Open",
-                onClick: () =>
-                  window.open(`${EXPLORER_BASE}/tx/${json.txHash}`, "_blank"),
+                onClick: () => window.open(`${EXPLORER_BASE}/tx/${json.txHash}`, "_blank"),
               },
             }
           : undefined
@@ -343,9 +347,7 @@ export default function DashboardPage() {
       await refreshProfile();
     } catch (err) {
       console.error("claim error", err);
-      toast.error(
-        err?.shortMessage || err?.message || "Failed to claim badge. Please try again."
-      );
+      toast.error(err?.shortMessage || err?.message || "Failed to claim badge. Please try again.");
     } finally {
       setClaiming((s) => ({ ...s, [catName]: false }));
     }
@@ -395,8 +397,6 @@ export default function DashboardPage() {
               <AlertTriangle className="h-5 w-5 text-amber-500" />
               Account pending (testing)
             </DialogTitle>
-
-            {/* ✅ FIX: use asChild to avoid <div> inside <p> */}
             <DialogDescription asChild>
               <div className="text-sm text-muted-foreground">
                 <div className="mb-2">
@@ -422,12 +422,10 @@ export default function DashboardPage() {
               <Badge variant="secondary">Pending</Badge>
             </div>
 
-            {/* Countdown row(s) */}
             <div className="text-xs">
               {estApprovalIn !== null && estApprovalIn > 0 ? (
                 <div>
-                  Estimated auto-approval in:{" "}
-                  <span className="font-semibold">{estApprovalIn}s</span>
+                  Estimated auto-approval in: <span className="font-semibold">{estApprovalIn}s</span>
                 </div>
               ) : (
                 <div className="text-emerald-600">
@@ -475,11 +473,11 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex gap-2">
-              {/*canSync && (
+              {/* {canSync && (
                 <Button variant="outline" onClick={resyncFromChain}>
                   Resync badges
                 </Button>
-              )*/}
+              )} */}
               <Link href="/submit">
                 <Button className="gap-2 bg-[#3563E9] hover:bg-[#008FFF]">
                   <Plus className="h-4 w-4" />
@@ -490,20 +488,20 @@ export default function DashboardPage() {
           </div>
         </MountFade>
 
-        {/* KPIs (uniform height) */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 items-stretch auto-rows-fr">
+        {/* KPIs */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 items-stretch auto-rows-fr">
           <MountFade delay={0}>
             <Card className="h-full">
               <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
                 <div className="flex items-center justify-between">
                   <Target className="h-8 w-8 text-purple-600" />
                   <span className="text-3xl font-bold dark:text-white">
-                    {((profile.overallTruthScore ?? 0) * 100).toFixed(0)}%
+                    {(voteStats.accuracy * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div>
                   <p className="text-gray-600 dark:text-gray-400 mb-2">Truth Score</p>
-                  <Progress value={(profile.overallTruthScore ?? 0) * 100} />
+                  <Progress value={voteStats.accuracy * 100} />
                 </div>
               </CardContent>
             </Card>
@@ -514,9 +512,7 @@ export default function DashboardPage() {
               <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
                 <div className="flex items-center justify-between">
                   <VoteIcon className="h-8 w-8 text-green-600" />
-                  <span className="text-3xl font-bold dark:text-white">
-                    {userVotes.length}
-                  </span>
+                  <span className="text-3xl font-bold dark:text-white">{userVotes.length}</span>
                 </div>
                 <div>
                   <p className="text-gray-600 dark:text-gray-400">Total Votes</p>
@@ -527,20 +523,6 @@ export default function DashboardPage() {
           </MountFade>
 
           <MountFade delay={140}>
-            <Card className="h-full">
-              <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <Award className="h-8 w-8 text-yellow-600" />
-                  <span className="text-3xl font-bold dark:text-white">
-                    {accuracy.toFixed(0)}%
-                  </span>
-                </div>
-                <p className="text-gray-600 dark:text-gray-400">Vote Accuracy</p>
-              </CardContent>
-            </Card>
-          </MountFade>
-
-          <MountFade delay={210}>
             <Card className="h-full">
               <CardContent className="h-full min-h-[150px] pt-6 flex flex-col justify-between">
                 <div className="flex items-center justify-between">
@@ -555,8 +537,8 @@ export default function DashboardPage() {
           </MountFade>
         </div>
 
-        {/* Current badges */}
-        <MountFade delay={260}>
+        {/* Current badges (driven by computed per-category stats) */}
+        <MountFade delay={200}>
           <Card className="mb-8">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 dark:text-white">
@@ -572,7 +554,15 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-6">
                   {profile.badges.map((badge, i) => {
-                    const badgeProgress = getBadgeProgress(badge);
+                    const key = String(badge.category).toLowerCase();
+                    const catStats = voteStats.byCategory[key];
+
+                    const truthScore = catStats?.truthScore ?? 0;
+                    const totalVotes = catStats?.total ?? 0;
+                    const correctInCat = catStats?.correct ?? 0;
+
+                    const badgeProgress = getBadgeProgress(truthScore, totalVotes, badge.tier);
+
                     return (
                       <MountFade key={`${badge.category}-${badge.tokenId ?? "noid"}`} delay={i * 60}>
                         <div className="p-4 bg-gray-50 rounded-lg dark:bg-[#252526]">
@@ -590,13 +580,10 @@ export default function DashboardPage() {
                                 {badge.category} {badge.tier}
                               </Badge>
                               <span className="text-sm text-gray-600 dark:text-gray-400">
-                                {(badge.totalVotes ?? badge.voteCount ?? 0)} votes •{" "}
-                                {(badge.correctVotes ?? 0)} correct
+                                {totalVotes} votes • {correctInCat} correct
                               </span>
                             </div>
-                            <Badge variant="outline">
-                              {((badge.truthScore ?? 0) * 100).toFixed(0)}% score
-                            </Badge>
+                            <Badge variant="outline">{(truthScore * 100).toFixed(0)}% score</Badge>
                           </div>
 
                           <div className="space-y-1">
@@ -643,7 +630,7 @@ export default function DashboardPage() {
 
         {/* Claimable categories */}
         {claimableCategories.length > 0 && (
-          <MountFade delay={320}>
+          <MountFade delay={260}>
             <Card className="mb-8">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 dark:text-white">
@@ -660,8 +647,7 @@ export default function DashboardPage() {
                       statusLc === "minting" ||
                       statusLc === "minted";
 
-                    const disabled =
-                      !canClaimNow() || awaitingMint || !!claiming[c.category];
+                    const disabled = !canClaimNow() || awaitingMint || !!claiming[c.category];
 
                     const buttonText = claiming[c.category]
                       ? "Claiming…"
@@ -683,7 +669,8 @@ export default function DashboardPage() {
                             </Badge>
                           </div>
                           <p className="text-xs text-gray-500 mb-3 dark:text-gray-400">
-                            Claim your Silver badge NFT for this category.
+                            Claim your Silver badge NFT for this category.{" "}
+                            {`Need ${(REQUIRED_TRUTH * 100).toFixed(0)}% truth score & ${REQUIRED_VOTES} votes.`}
                           </p>
                           <Button
                             className="w-full bg-[#227DC3] hover:bg-blue-700"
@@ -694,8 +681,7 @@ export default function DashboardPage() {
                           </Button>
                           {!canClaimNow() && (
                             <p className="mt-2 text-xs text-amber-600">
-                              Badge claim will be available once your account is
-                              approved.
+                              Badge claim will be available once your account is approved.
                             </p>
                           )}
                         </div>
@@ -709,7 +695,7 @@ export default function DashboardPage() {
         )}
 
         {/* Claims / Votes tabs */}
-        <MountFade delay={380}>
+        <MountFade delay={320}>
           <Tabs defaultValue="claims" className="w-full">
             <MountFade delay={0}>
               <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -736,7 +722,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {userClaims.map((claim, i) => (
-                    <MountFade key={claim.id} delay={i * 50}>
+                    <MountFade key={claim.id || claim._id || i} delay={i * 50}>
                       <ClaimCard claim={claim} />
                     </MountFade>
                   ))}
@@ -759,18 +745,21 @@ export default function DashboardPage() {
                     const claim = voteClaims[vote.claimId];
                     if (!claim) return null;
 
-                    let isCorrect = null;
-                    if (claim.aiVerdict) {
-                      const userVotedTruth = vote.vote === "truth";
-                      const aiSaysTruth = claim.aiVerdict.result === "Truth";
-                      isCorrect = userVotedTruth === aiSaysTruth;
-                    }
+                    const userSide = userVoteSide(vote);
+                    const verdict = claimVerdictSide(claim);
+                    const isCorrect = userSide && verdict ? userSide === verdict : null;
 
-                    const stake = Number(vote.stake ?? 0);
+                    const stake = stakeOf(vote);
+                    const category =
+                      claim?.category ||
+                      vote?.categoryBadge ||
+                      claim?.metadata?.category ||
+                      "Uncategorized";
+                    const tier = vote?.badgeTier || "silver";
 
                     return (
                       <MountFade
-                        key={vote.id || `${vote.claimId}-${vote.voterAddress || ""}`}
+                        key={vote.id || vote._id || `${vote.claimId}-${vote.voterAddress || ""}-${i}`}
                         delay={i * 50}
                       >
                         <Card>
@@ -778,24 +767,24 @@ export default function DashboardPage() {
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <Badge>{claim.category}</Badge>
+                                  <Badge>{category}</Badge>
                                   <Badge variant="outline" className="text-xs">
-                                    {vote.badgeTier}
+                                    {tier}
                                   </Badge>
                                 </div>
                                 <CardTitle className="text-lg">
-                                  {claim.title}
+                                  {claim.title || claim.headline || "Untitled claim"}
                                 </CardTitle>
                               </div>
                               <div className="flex gap-2">
                                 <Badge
                                   className={
-                                    vote.vote === "truth"
+                                    userSide === "truth"
                                       ? "bg-green-100 text-green-800"
                                       : "bg-red-100 text-red-800"
                                   }
                                 >
-                                  {vote.vote === "truth" ? "Truth" : "Fake"}
+                                  {userSide === "truth" ? "Truth" : "Fake"}
                                 </Badge>
                                 {isCorrect !== null && (
                                   <Badge
@@ -813,13 +802,20 @@ export default function DashboardPage() {
                               <span>Stake: {stake.toFixed(3)} ETH</span>
                               <span>
                                 {vote.timestamp
-                                  ? new Date(vote.timestamp).toLocaleDateString()
+                                  ? new Date(
+                                      Number.isFinite(vote.timestamp)
+                                        ? vote.timestamp * 1000
+                                        : vote.timestamp
+                                    ).toLocaleDateString()
+                                  : vote.votedAt
+                                  ? new Date(vote.votedAt).toLocaleDateString()
                                   : ""}
                               </span>
                             </div>
                             {(vote.evidence || []).length > 0 && (
                               <div className="text-xs text-gray-500">
-                                {vote.evidence.length} evidence sources provided
+                                {vote.evidence.length} evidence source
+                                {vote.evidence.length > 1 ? "s" : ""} provided
                               </div>
                             )}
                           </CardContent>

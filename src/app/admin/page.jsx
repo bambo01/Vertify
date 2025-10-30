@@ -518,21 +518,44 @@ function Dashboard() {
       </Dialog>
 
       {/* NEW: FINALIZE PANEL DIALOG */}
-      <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
-        <DialogContent className="w-[96vw] max-w-[1100px] max-h-[85vh] overflow-y-auto bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
-          <DialogHeader>
-            <DialogTitle>Finalize Claims</DialogTitle>
-            <DialogDescription>Resolve claims and distribute rewards.</DialogDescription>
-          </DialogHeader>
+      {finalizeOpen && (
+  <div
+    className="fixed inset-0 z-50 flex items-start justify-center p-4"
+    onClick={() => setFinalizeOpen(false)} // close on backdrop click
+    aria-modal="true"
+    role="dialog"
+  >
+    {/* Backdrop */}
+    <div className="absolute inset-0 bg-black/50" />
 
-          {/* You can pass a defaultClaimId to prefill */}
-          <AdminFinalizePanel defaultClaimId={finalizeClaimId} />
+    {/* Sheet */}
+    <div
+      className="relative z-10 w-[96vw] max-w-[1400px] max-h-[90vh] overflow-y-auto
+                 rounded-xl border bg-white text-zinc-900 shadow-xl
+                 dark:bg-zinc-900 dark:text-zinc-100"
+      onClick={(e) => e.stopPropagation()} // keep clicks inside from closing
+    >
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="mb-2">
+          <h2 className="text-lg font-semibold">Finalize Claims</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Resolve claims and distribute rewards.
+          </p>
+        </div>
 
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setFinalizeOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* Panel: make it stretch by passing fullWidth if you added that prop */}
+        <AdminFinalizePanel defaultClaimId={finalizeClaimId} fullWidth />
+
+        <div className="mt-4 flex justify-end">
+          <Button variant="outline" onClick={() => setFinalizeOpen(false)}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* PAGE HEADER */}
       <div className="container mx-auto max-w-6xl px-4 py-8">
