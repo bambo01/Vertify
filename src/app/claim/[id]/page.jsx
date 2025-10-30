@@ -56,14 +56,14 @@ async function postServerVerification(claimId, payload) {
   return res.json();
 }
 
-/* ✅ finalize helper */
-async function postServerFinalize(claimId, { feeBps = 0 } = {}) {
+/* ✅ finalize helper — now sends winner so chain follows AI */
+async function postServerFinalize(claimId, { feeBps = 0, winner } = {}) {
   const res = await fetch(
     `${SERVER_BASE}/api/claims/${encodeURIComponent(claimId)}/finalize`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ feeBps }),
+      body: JSON.stringify({ feeBps, winner }),
     }
   );
   if (!res.ok) {
@@ -139,6 +139,13 @@ const summarizeTruthFake = (arr = []) => {
   const truthPct = total ? (truthVotes / total) * 100 : 0;
   const fakePct  = total ? (fakeVotes  / total) * 100 : 0;
   return { truthVotes, fakeVotes, total, truthPct, fakePct };
+};
+
+/* ✅ single source of truth for AI result */
+const normalizeAiResult = (res) => {
+  const r = String(res || '').trim().toLowerCase();
+  if (r === 'truth' || r === 'fake') return r;
+  return 'uncertain';
 };
 
 export default function ClaimDetailPage() {
@@ -357,15 +364,10 @@ export default function ClaimDetailPage() {
   }, [claim, votingEndsMs, verifying]);
 
   // ---- derive AI verdict (drive UI from AI, not status) ----
-  const verdictRaw = useMemo(
-    () =>
-      String(
-        claim?.aiVerification?.result ??
-        claim?.aiVerdict?.result ??
-        ''
-      ).toLowerCase(),
-    [claim]
-  );
+  const verdictRaw = useMemo(() => {
+    const r = claim?.aiVerification?.result ?? claim?.aiVerdict?.result;
+    return normalizeAiResult(r);
+  }, [claim]);
 
   const showAiVerifiedBadge =
     verdictRaw === 'truth' || verdictRaw === 'fake' || verdictRaw === 'uncertain';
@@ -566,28 +568,31 @@ export default function ClaimDetailPage() {
         setApiVoteStats(null);
       }
 
-      // finalize payouts if decisive & time ended
+      // finalize payouts if decisive & time ended — AI is the authority
       try {
         const av =
-          (serverResult?.updated?.aiVerification) ||
-          (serverResult?.updatedClaim?.aiVerification) ||
-          (serverResult?.aiVerification) ||
-          (claim?.aiVerification) ||
+          serverResult?.updated?.aiVerification ??
+          serverResult?.updatedClaim?.aiVerification ??
+          serverResult?.aiVerification ??
+          claim?.aiVerification ??
           null;
 
         const ended = votingEndsMs && Date.now() >= votingEndsMs;
-        const decisive = av && (av.result === 'Truth' || av.result === 'Fake');
+        const aiSide = normalizeAiResult(av?.result);
+        const decisive = aiSide === 'truth' || aiSide === 'fake';
         const alreadyResolved = (claim?.status === 'resolved');
 
         if (ended && decisive && !alreadyResolved) {
-          const finalizeResp = await postServerFinalize(claimKey, { feeBps: 0 });
+          // 🔑 tell the backend which side to use
+          const finalizeResp = await postServerFinalize(claimKey, { feeBps: 0, winner: aiSide });
 
+          // UI always reflects AI; chain winner is used only as fallback display
           setClaim((c) => ({
             ...(c || endedClaim),
             status: 'resolved',
             finalVerdict: {
-              side: finalizeResp?.winner || (av.result === 'Truth' ? 'truth' : 'fake'),
-              score: Number(av?.finalScore || 0),
+              side: aiSide || finalizeResp?.winner || 'uncertain',
+              score: safeNumber(av?.finalScore, 0),
               reason: av?.reasoning || '',
               sources: Array.isArray(av?.sources) ? av.sources : [],
             },
